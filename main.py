@@ -48,3 +48,4 @@ if token:
         print(f"{Fore.LIGHTRED_EX}[Error] Cannot start bot: {e}")
 else:
     print(f"{Fore.LIGHTRED_EX}[Error] DISCORD_TOKEN is missing in Environment Variables.")
+token = os.environ.get("DISCORD_TOKEN")
