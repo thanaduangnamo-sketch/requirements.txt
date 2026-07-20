@@ -1,4 +1,5 @@
 import discord
+import os
 from discord.ext import commands
 
 # เปิดสิทธิ์บอทแบบข้ามปัญหา (ดึงมาหมดทุกสิทธิ์)
@@ -14,5 +15,5 @@ async def on_ready():
         activity=discord.Game(name="ระบบเปิดใช้งาน 24 ชม.")
     )
 
-# ⚠️ เอา Token อันใหม่ที่คุณมี มาวางแทนที่ข้อความภาษาไทยในเครื่องหมายคำพูดได้เลยครับ
-bot.run('token')
+# ดึงค่าจาก Environment Variable ที่ชื่อ token บน Render มาใช้เลย ไม่ต้องรอพิมพ์
+token = os.environ.get("token")
