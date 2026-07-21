@@ -91,7 +91,7 @@ class VerifyView(discord.ui.View):
         await interaction.response.send_modal(modal)
 
 # ==========================================
-# ⚙️ 3. Slash Command (/setup-verify)
+# ⚙️ 3. Slash Commands
 # ==========================================
 @bot.event
 async def on_ready():
@@ -102,6 +102,7 @@ async def on_ready():
     except Exception as e:
         print(f"❌ ซิงค์คำสั่งไม่สำเร็จ: {e}")
 
+# --- 1. คำสั่ง /setup-verify ---
 @bot.tree.command(name="setup-verify", description="สร้างกล่องยืนยันตัวตนแบบกำหนดเอง")
 @app_commands.describe(
     role="เลือกยศที่จะแจก (บังคับ)",
@@ -117,7 +118,6 @@ async def setup_verify(
     description: str = None, 
     image_url: str = None
 ):
-    # ถ้าผู้ใช้ไม่ใส่ description ให้ใช้ข้อความเริ่มต้น
     if not description:
         description = (
             "กรุณากดปุ่มด้านล่างเพื่อรับรหัสผ่าน 4 หลัก\n"
@@ -130,7 +130,6 @@ async def setup_verify(
         color=0x2b2d31
     )
     
-    # ถ้ามีรูปภาพ ให้ตั้งค่ารูปใน Embed
     if image_url:
         embed.set_image(url=image_url)
 
@@ -141,9 +140,29 @@ async def setup_verify(
 
     view = VerifyView(role_id=role.id)
     
-    # ส่งข้อความไปยัง Channel
     await interaction.channel.send(embed=embed, view=view)
     await interaction.response.send_message("✅ สร้างกล่องยืนยันตัวตนเรียบร้อยแล้ว!", ephemeral=True)
+
+
+# --- 2. คำสั่ง /clear (ลบข้อความ) ---
+@bot.tree.command(name="clear", description="ลบข้อความในช่องปัจจุบันตามจำนวนที่กำหนด")
+@app_commands.describe(amount="จำนวนข้อความที่ต้องการลบ (เช่น 1-100)")
+@app_commands.default_permissions(manage_messages=True)
+async def clear_messages(interaction: discord.Interaction, amount: int):
+    if amount < 1 or amount > 100:
+        return await interaction.response.send_message("❌ กรุณาระบุจำนวนข้อความระหว่าง 1 ถึง 100 ข้อความครับ", ephemeral=True)
+
+    # ส่งการตอบรับเบื้องหลังก่อนเพื่อป้องกันเวลาลบเกิน 3 วินาทีแล้วขึ้น Error
+    await interaction.response.defer(ephemeral=True)
+    
+    deleted = await interaction.channel.purge(limit=amount)
+    
+    embed = discord.Embed(
+        title="🧹 ลบข้อความเรียบร้อยแล้ว",
+        description=f"ลบข้อความในช่องนี้ไปทั้งหมด **{len(deleted)}** ข้อความ",
+        color=discord.Color.green()
+    )
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ==========================================
 # 🚀 4. เริ่มต้นรันบอท
