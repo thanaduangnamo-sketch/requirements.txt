@@ -1,70 +1,156 @@
 import os
+import random
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import discord
 from discord.ext import commands
-from colorama import Fore, init
+from discord import app_commands
 
-# เริ่มต้นระบบ colorama สำหรับแสดงสีข้อความ
-init(autoreset=True)
-
-# ========================================================
-# 🟢 ส่วนที่ 1: ระบบเปิดพอร์ตหลอก (Bypass Web Service ของ Render)
-# ========================================================
+# ==========================================
+# 🟢 1. Web Server หลอกพอร์ตสำหรับ Render Free
+# ==========================================
 class AliveServer(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
-        self.wfile.write(b"Bot is alive!")
+        self.wfile.write(b"Verification Bot is Online!")
 
 def run_alive_server():
-    # Render จะส่งพอร์ตมาให้ผ่าน Environment Variable ชื่อ PORT
     port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("", port), AliveServer)
-    print(f"{Fore.LIGHTBLUE_EX}[Web Server] Dummy port opened on port {port} to bypass Render check.")
     server.serve_forever()
 
-# สั่งให้เว็บเซิร์ฟเวอร์หลอกทำงานเบื้องหลัง (Background Thread)
 threading.Thread(target=run_alive_server, daemon=True).start()
 
-# ========================================================
-# 🟢 ส่วนที่ 2: ตั้งค่าบอท Discord และดึง Token จากระบบ
-# ========================================================
-print(f"{Fore.LIGHTCYAN_EX}[System] Bot is starting up on Render...")
-
-# ดึง Token จากหน้า Environment ของ Render (ห้ามใช้ input())
-token = os.environ.get("DISCORD_TOKEN")
-
-# ตั้งค่า Intents สำหรับบอท
+# ==========================================
+# 🤖 2. ตั้งค่าระบบ Discord Bot
+# ==========================================
 intents = discord.Intents.default()
-intents.message_content = True  # เปิดใช้งานหากบอทจำเป็นต้องอ่านข้อความ
+intents.message_content = True
+intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ------------------------------------------
+# 🧩 Modal (หน้าต่าง Pop-up กรอกตัวเลข 4 หลัก)
+# ------------------------------------------
+class VerifyModal(discord.ui.Modal, title="🔒 กรอกรหัสเพื่อยืนยันตัวตน"):
+    def __init__(self, correct_code: str, role_id: int):
+        super().__init__()
+        self.correct_code = correct_code
+        self.role_id = role_id
+
+        self.code_input = discord.ui.TextInput(
+            label=f"กรอกรหัส 4 หลักนี้: [{correct_code}]",
+            placeholder="พิมพ์ตัวเลข 4 หลักที่เห็นให้ถูกต้อง...",
+            min_length=4,
+            max_length=4,
+            required=True
+        )
+        self.add_item(self.code_input)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        user_code = self.code_input.value.strip()
+
+        if user_code == self.correct_code:
+            role = interaction.guild.get_role(self.role_id)
+            if role:
+                try:
+                    await interaction.user.add_roles(role)
+                    embed = discord.Embed(
+                        title="🎉 ยืนยันตัวตนสำเร็จ!",
+                        description=f"คุณ {interaction.user.mention} ได้รับยศ **{role.name}** เรียบร้อยแล้ว",
+                        color=discord.Color.green()
+                    )
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                except discord.Forbidden:
+                    await interaction.response.send_message("❌ บอทไม่มียศสูงพอที่จะแจกยศนี้ได้ (ย้ายยศบอทให้อยู่เหนือยศที่จะแจก)", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบ", ephemeral=True)
+        else:
+            embed = discord.Embed(
+                title="❌ รหัสไม่ถูกต้อง",
+                description="กรุณากดปุ่มแล้วลองใหม่อีกครั้งครับ",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ------------------------------------------
+# 🔘 View (ปุ่มกด Verify)
+# ------------------------------------------
+class VerifyView(discord.ui.View):
+    def __init__(self, role_id: int):
+        super().__init__(timeout=None)
+        self.role_id = role_id
+
+    @discord.ui.button(label="ยืนยันตัวตน (Verify)", style=discord.ButtonStyle.success, emoji="🛡️", custom_id="verify_btn_custom")
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        generated_code = str(random.randint(1000, 9999))
+        modal = VerifyModal(correct_code=generated_code, role_id=self.role_id)
+        await interaction.response.send_modal(modal)
+
+# ==========================================
+# ⚙️ 3. Slash Command (/setup-verify)
+# ==========================================
 @bot.event
 async def on_ready():
-    print(f"{Fore.LIGHTGREEN_EX}[Ready] Connected to Discord successfully!")
-    print(f"[Bot Account]: {bot.user.name}")
-    print("-----------------------------------------")
-
-# ========================================================
-# 🟢 ส่วนที่ 3: โค้ดคำสั่งบอทของคุณ (Commands / Events)
-# ========================================================
-
-# พิมพ์หรือก๊อปปี้คำสั่ง (@bot.command) เดิมของคุณมาวางต่อตรงนี้ได้เลยครับ เช่น:
-# @bot.command()
-# async def ping(ctx):
-#     await ctx.send("pong!")
-
-
-# ========================================================
-# 🟢 ส่วนที่ 4: สั่งรันบอท
-# ========================================================
-if token:
+    print(f"✅ บอทออนไลน์แล้ว: {bot.user.name}")
     try:
-        bot.run(token)
+        synced = await bot.tree.sync()
+        print(f"✨ ซิงค์ Slash Commands สำเร็จ ({len(synced)} คำสั่ง)")
     except Exception as e:
-        print(f"{Fore.LIGHTRED_EX}[Error] Cannot start bot: {e}")
+        print(f"❌ ซิงค์คำสั่งไม่สำเร็จ: {e}")
+
+@bot.tree.command(name="setup-verify", description="สร้างกล่องยืนยันตัวตนแบบกำหนดเอง")
+@app_commands.describe(
+    role="เลือกยศที่จะแจก (บังคับ)",
+    title="หัวข้อของกล่องข้อความ (บังคับ)",
+    description="รายละเอียดคำอธิบาย (ไม่บังคับ)",
+    image_url="ลิงก์รูปภาพประกอบ Embed (ไม่บังคับ)"
+)
+@app_commands.default_permissions(administrator=True)
+async def setup_verify(
+    interaction: discord.Interaction, 
+    role: discord.Role, 
+    title: str, 
+    description: str = None, 
+    image_url: str = None
+):
+    # ถ้าผู้ใช้ไม่ใส่ description ให้ใช้ข้อความเริ่มต้น
+    if not description:
+        description = (
+            "กรุณากดปุ่มด้านล่างเพื่อรับรหัสผ่าน 4 หลัก\n"
+            "แล้วกรอกให้ถูกต้องภายใน **3 นาที** เพื่อรับยศเข้าใช้งานห้องต่างๆ"
+        )
+
+    embed = discord.Embed(
+        title=title,
+        description=f"{description}\n\n🎁 **ยศที่จะได้รับ:** {role.mention}",
+        color=0x2b2d31
+    )
+    
+    # ถ้ามีรูปภาพ ให้ตั้งค่ารูปใน Embed
+    if image_url:
+        embed.set_image(url=image_url)
+
+    if interaction.guild.icon:
+        embed.set_thumbnail(url=interaction.guild.icon.url)
+        
+    embed.set_footer(text="Security System • ระบบยืนยันตัวตนอัตโนมัติ", icon_url=bot.user.display_avatar.url)
+
+    view = VerifyView(role_id=role.id)
+    
+    # ส่งข้อความไปยัง Channel
+    await interaction.channel.send(embed=embed, view=view)
+    await interaction.response.send_message("✅ สร้างกล่องยืนยันตัวตนเรียบร้อยแล้ว!", ephemeral=True)
+
+# ==========================================
+# 🚀 4. เริ่มต้นรันบอท
+# ==========================================
+token = os.environ.get("DISCORD_TOKEN")
+
+if token:
+    bot.run(token)
 else:
-    print(f"{Fore.LIGHTRED_EX}[Error] DISCORD_TOKEN is missing in Render Environment Variables.")
+    print("❌ ไม่พบ DISCORD_TOKEN")
