@@ -8,7 +8,6 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import discord
 from discord.ext import commands
 from discord import app_commands
-import yt_dlp
 
 MAIN_GUILD_ID = 1522224772258332792
 
@@ -58,81 +57,10 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
-intents.voice_states = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 URL_REGEX = r"(https?://[^\s]+|discord\.gg/[^\s]+|discord\.com/invite/[^\s]+|www\.[^\s]+|[a-zA-Z0-0]+\.(com|net|org|gg|xyz|co|th|io|me))"
-
-# ==========================================
-# 🎵 Music Player Configuration
-# ==========================================
-music_queues = {}
-
-YTDL_OPTIONS = {
-    'format': 'bestaudio/best',
-    'extractaudio': True,
-    'audioformat': 'mp3',
-    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
-    'restrictfilenames': True,
-    'noplaylist': True,
-    'nocheckcertificate': True,
-    'ignoreerrors': False,
-    'logtostderr': False,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-    'source_address': '0.0.0.0'
-}
-
-FFMPEG_OPTIONS = {
-    'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
-    'options': '-vn'
-}
-
-ytdl = yt_dlp.YoutubeDL(YTDL_OPTIONS)
-
-class YTDLSource(discord.PCMVolumeTransformer):
-    def __init__(self, source, *, data, volume=0.5):
-        super().__init__(source, volume)
-        self.data = data
-        self.title = data.get('title')
-        self.url = data.get('url')
-        self.duration = data.get('duration')
-
-    @classmethod
-    async def from_url(cls, url, loop=None):
-        loop = loop or asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=False))
-
-        if 'entries' in data:
-            data = data['entries'][0]
-
-        filename = data['url']
-        return cls(discord.FFmpegPCMAudio(filename, **FFMPEG_OPTIONS), data=data)
-
-def play_next_song(guild_id, interaction_channel):
-    if guild_id in music_queues and len(music_queues[guild_id]) > 0:
-        song = music_queues[guild_id].pop(0)
-        guild = bot.get_guild(guild_id)
-        voice_client = guild.voice_client
-
-        if voice_client:
-            coro = YTDLSource.from_url(song['url'], loop=bot.loop)
-            future = asyncio.run_coroutine_threadsafe(coro, bot.loop)
-            try:
-                player = future.result()
-                voice_client.play(player, after=lambda e: play_next_song(guild_id, interaction_channel))
-                
-                embed = discord.Embed(
-                    title="🎵 กำลังเล่นเพลง",
-                    description=f"**[{player.title}]({song['url']})**\n⏱️ ความยาว: `{player.duration} วินาที`",
-                    color=discord.Color.purple()
-                )
-                asyncio.run_coroutine_threadsafe(interaction_channel.send(embed=embed), bot.loop)
-            except Exception as e:
-                print(f"❌ Playback Error: {e}")
-                play_next_song(guild_id, interaction_channel)
 
 # ==========================================
 # 🧩 Verify Modal & View
@@ -239,7 +167,7 @@ async def on_ready():
     # 🟣 ตั้งค่าสถานะเป็น "เม็ดม่วง" (Streaming On Twitch)
     await bot.change_presence(
         activity=discord.Streaming(
-            name="🟣 ระบบจัดการดิสคอร์ด & เพลง 24/7",
+            name="🟣 ระบบจัดการดิสคอร์ด & ป้องกันเซิร์ฟเวอร์ 24/7",
             url="https://www.twitch.tv/discord"
         )
     )
@@ -492,102 +420,7 @@ async def load_guild(interaction: discord.Interaction, backup_name: str):
 
 
 # ------------------------------------------
-# 🎵 หมวดหมู่ที่ 3: ระบบเปิดเพลง (Music)
-# ------------------------------------------
-@bot.tree.command(name="เล่นเพลง", description="🎵 เปิดเพลงจาก YouTube (พิมพ์ชื่อเพลง หรือ วางลิงก์)")
-@app_commands.describe(query="ค้นหาชื่อเพลงหรือวางลิงก์ YouTube")
-async def play(interaction: discord.Interaction, query: str):
-    if not interaction.user.voice:
-        return await interaction.response.send_message("❌ คุณต้องเชื่อมต่อห้องเสียง (Voice Channel) ก่อนครับ!", ephemeral=True)
-
-    await interaction.response.defer()
-
-    voice_channel = interaction.user.voice.channel
-    voice_client = interaction.guild.voice_client
-
-    if not voice_client:
-        voice_client = await voice_channel.connect()
-    elif voice_client.channel != voice_channel:
-        await voice_client.move_to(voice_channel)
-
-    guild_id = interaction.guild_id
-    if guild_id not in music_queues:
-        music_queues[guild_id] = []
-
-    try:
-        loop = bot.loop or asyncio.get_event_loop()
-        info = await loop.run_in_executor(None, lambda: ytdl.extract_info(query, download=False))
-        
-        if 'entries' in info:
-            info = info['entries'][0]
-
-        title = info.get('title', 'Unknown Title')
-        webpage_url = info.get('webpage_url', query)
-
-        music_queues[guild_id].append({'url': webpage_url, 'title': title})
-
-        if not voice_client.is_playing() and not voice_client.is_paused():
-            play_next_song(guild_id, interaction.channel)
-            embed = discord.Embed(
-                title="🔍 ค้นพบเพลง",
-                description=f"กำลังเตรียมเล่น: **[{title}]({webpage_url})**",
-                color=discord.Color.purple()
-            )
-            await interaction.followup.send(embed=embed)
-        else:
-            embed = discord.Embed(
-                title="📥 เพิ่มเข้าคิวเรียบร้อย",
-                description=f"**[{title}]({webpage_url})**\nลำดับคิวที่: `{len(music_queues[guild_id])}`",
-                color=discord.Color.gold()
-            )
-            await interaction.followup.send(embed=embed)
-
-    except Exception as e:
-        await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการดึงเพลง: {e}")
-
-@bot.tree.command(name="ข้ามเพลง", description="⏭️ ข้ามเพลงปัจจุบันไปเล่นเพลงถัดไป")
-async def skip(interaction: discord.Interaction):
-    voice_client = interaction.guild.voice_client
-    if voice_client and voice_client.is_playing():
-        voice_client.stop()
-        await interaction.response.send_message("⏭️ ข้ามเพลงเรียบร้อยแล้ว!")
-    else:
-        await interaction.response.send_message("❌ ไม่มีเพลงกำลังเล่นอยู่ครับ", ephemeral=True)
-
-@bot.tree.command(name="หยุดเพลง", description="⏹️ หยุดเล่นเพลง ล้างคิว และออกจากห้องเสียง")
-async def stop(interaction: discord.Interaction):
-    guild_id = interaction.guild_id
-    if guild_id in music_queues:
-        music_queues[guild_id].clear()
-
-    voice_client = interaction.guild.voice_client
-    if voice_client:
-        await voice_client.disconnect()
-        await interaction.response.send_message("⏹️ หยุดเพลงและออกจากห้องเสียงเรียบร้อยครับ!")
-    else:
-        await interaction.response.send_message("❌ บอทไม่ได้อยู่ในห้องเสียง", ephemeral=True)
-
-@bot.tree.command(name="คิวเพลง", description="📜 แสดงรายการคิวเพลงที่กำลังรอเล่น")
-async def queue(interaction: discord.Interaction):
-    guild_id = interaction.guild_id
-    if guild_id not in music_queues or len(music_queues[guild_id]) == 0:
-        return await interaction.response.send_message("📜 ไม่มีรายการเพลงในคิวครับ", ephemeral=True)
-
-    queue_list = "\n".join([f"`{i+1}.` {song['title']}" for i, song in enumerate(music_queues[guild_id][:10])])
-    
-    embed = discord.Embed(
-        title="📜 รายการคิวเพลง",
-        description=queue_list,
-        color=discord.Color.purple()
-    )
-    if len(music_queues[guild_id]) > 10:
-        embed.set_footer(text=f"และอีก {len(music_queues[guild_id]) - 10} เพลง...")
-
-    await interaction.response.send_message(embed=embed)
-
-
-# ------------------------------------------
-# ⚙️ หมวดหมู่ที่ 4: ตั้งค่าระบบ & ความปลอดภัย
+# ⚙️ หมวดหมู่ที่ 3: ตั้งค่าระบบ & ความปลอดภัย
 # ------------------------------------------
 @bot.tree.command(name="ตั้งค่า-ช่องแจ้งเตือนบอท", description="🔔 ตั้งค่าช่องรับแจ้งเตือนเมื่อดึงบอทเข้าเซิร์ฟเวอร์ใหม่")
 @app_commands.describe(channel="เลือกช่องข้อความ")
