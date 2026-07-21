@@ -1,6 +1,7 @@
 import os
 import json
 import random
+import re
 import asyncio
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -48,6 +49,9 @@ intents.members = True
 intents.guilds = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+# Pattern สำหรับตรวจจับลิงก์
+URL_REGEX = r"(https?://[^\s]+|discord\.gg/[^\s]+|discord\.com/invite/[^\s]+|www\.[^\s]+|[a-zA-Z0-0]+\.(com|net|org|gg|xyz|co|th|io|me))"
 
 class VerifyModal(discord.ui.Modal, title="🔐 ยืนยันตัวตน"):
     def __init__(self, correct_code: str, role_id: int):
@@ -123,6 +127,42 @@ async def on_ready():
         print(f"✨ Synced {len(synced)} commands")
     except Exception as e:
         print(f"❌ Sync failed: {e}")
+
+# --- ระบบตรวจจับและลบข้อความที่มีลิงก์ ---
+@bot.event
+async def on_message(message: discord.Message):
+    if message.author.bot or not message.guild:
+        return
+
+    settings = load_settings()
+    # เปิดใช้งานระบบ Anti-Link เป็นค่าเริ่มต้น (True)
+    anti_link_enabled = settings.get("anti_link_enabled", True)
+
+    if anti_link_enabled:
+        # เช็คว่าข้อความมีลิงก์หรือไม่
+        if re.search(URL_REGEX, message.content, re.IGNORECASE):
+            author = message.author
+            
+            # เว้นเว้นให้ผู้ที่มีสิทธิ์แอดมินส่งได้
+            is_admin = author.guild_permissions.administrator or author.guild_permissions.manage_messages
+            
+            # นับจำนวนยศของผู้ส่ง (ไม่นับยศ @everyone)
+            user_roles_count = len([r for r in author.roles if not r.is_default()])
+
+            # หากไม่ใช่แอดมิน และมียศน้อยกว่า 5 ยศ ให้ทำการลบล้อกและแจ้งเตือน
+            if not is_admin and user_roles_count < 5:
+                try:
+                    await message.delete()
+                    warn_msg = await message.channel.send(
+                        f"⚠️ {author.mention} ห้ามส่งลิงก์! (ต้องมียศอย่างน้อย 5 ยศขึ้นไปจึงจะส่งลิงก์ได้)"
+                    )
+                    await asyncio.sleep(5)
+                    await warn_msg.delete()
+                except Exception as e:
+                    print(f"❌ Failed to delete link message: {e}")
+                return
+
+    await bot.process_commands(message)
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
@@ -209,6 +249,26 @@ async def toggle_autokick(interaction: discord.Interaction, status: bool, verify
     embed = discord.Embed(
         title="⚙️ ตั้งค่าระบบเตะเลท 10 นาที",
         description=f"สถานะปัจจุบัน: **{status_str}**{role_str}",
+        color=discord.Color.green() if status else discord.Color.red()
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+@bot.tree.command(name="toggle-antilink", description="🚫 เปิด/ปิด ระบบป้องกันการส่งลิงก์ (สำหรับผู้มียศต่ำกว่า 5 ยศ)")
+@app_commands.describe(status="เลือกเปิดหรือปิดระบบห้ามส่งลิงก์")
+@app_commands.default_permissions(administrator=True)
+async def toggle_antilink(interaction: discord.Interaction, status: bool):
+    if interaction.guild_id != MAIN_GUILD_ID:
+        return await interaction.response.send_message("❌ อนุญาตเฉพาะเซิร์ฟเวอร์หลักเท่านั้น", ephemeral=True)
+
+    settings = load_settings()
+    settings["anti_link_enabled"] = status
+    save_settings(settings)
+
+    status_str = "🟢 เปิดใช้งาน (ห้ามส่งลิงก์ถ้ามีต่ำกว่า 5 ยศ)" if status else "🔴 ปิดใช้งาน (อนุญาตให้ส่งลิงก์ได้ทุกคน)"
+
+    embed = discord.Embed(
+        title="⚙️ ตั้งค่าระบบป้องกันลิงก์",
+        description=f"สถานะปัจจุบัน: **{status_str}**",
         color=discord.Color.green() if status else discord.Color.red()
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
