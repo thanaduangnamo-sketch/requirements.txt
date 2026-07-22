@@ -13,7 +13,6 @@ OWNER_ID = 1524044074599055490
 MAIN_GUILD_ID = 1522224772258332792
 INVITE_LINK = "https://discord.gg/zgc2pxGb6W"
 
-# ตัวแปรกัน Sync ซ้ำเวลา Reconnect
 is_synced = False
 
 # ==========================================
@@ -99,7 +98,7 @@ async def send_welcome_dm(user: discord.User, guild: discord.Guild, role: discor
         return False
 
 # ==========================================
-# 🛡️ Event Listeners (Anti-Spam / Anti-Link / Anti-Nuke)
+# 🛡️ Event Listeners
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
@@ -111,7 +110,6 @@ async def on_message(message: discord.Message):
     is_admin = message.channel.permissions_for(user).administrator or user.id == OWNER_ID
 
     if not is_admin:
-        # 1. Anti-Invite Link
         if "discord.gg/" in message.content.lower() or "discord.com/invite" in message.content.lower():
             try:
                 await message.delete()
@@ -124,7 +122,6 @@ async def on_message(message: discord.Message):
             except Exception:
                 pass
 
-        # 2. Anti-Mass Mention
         if message.mention_everyone or len(message.mentions) > 5:
             try:
                 await message.delete()
@@ -137,7 +134,6 @@ async def on_message(message: discord.Message):
             except Exception:
                 pass
 
-        # 3. Anti-Spam
         timestamps = user_message_tracker[user.id]
         timestamps.append(now)
         user_message_tracker[user.id] = [t for t in timestamps if now - t < 3]
@@ -155,7 +151,6 @@ async def on_message(message: discord.Message):
 
     await bot.process_commands(message)
 
-# 4. Anti-Mass Channel Delete
 @bot.event
 async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
     guild = channel.guild
@@ -182,7 +177,6 @@ async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
                 f"👤 **ผู้กระทำผิด:** {executor.mention} (`{executor.id}`)\n⚡ **ระบบได้ทำการปลดยศเพื่อความปลอดภัยทันที!**"
             )
 
-# 5. Anti-Mass Role Delete
 @bot.event
 async def on_guild_role_delete(role: discord.Role):
     guild = role.guild
@@ -307,7 +301,7 @@ class PersistentVerifyView(discord.ui.View):
             await interaction.response.send_modal(modal)
 
 # ==========================================
-# 🟣 Bot Events (ปรับปรุงการ Sync แก้ปัญหาคำสั่งซ้ำ)
+# 🟣 Bot Events
 # ==========================================
 @bot.event
 async def on_ready():
@@ -322,17 +316,16 @@ async def on_ready():
         )
     )
     
-    # 📌 Sync แบบถูกต้อง ป้องกันการสร้างคำสั่งซ้ำเบิ้ล
     if not is_synced:
         try:
             synced = await bot.tree.sync()
-            print(f"🌐 Sync คำสั่งแบบ Global สำเร็จเรียบร้อย: {len(synced)} คำสั่ง")
+            print(f"🌐 Sync คำสั่งสำเร็จ: {len(synced)} คำสั่ง")
             is_synced = True
         except Exception as e:
             print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
 
 # ==========================================
-# 📖 Command: help (ศูนย์รวมคำสั่งทั้งหมด)
+# 📖 Commands
 # ==========================================
 @bot.tree.command(name="help", description="📖 ศูนย์รวมคำสั่งทั้งหมดภายในบอท")
 async def help_command(interaction: discord.Interaction):
@@ -379,9 +372,6 @@ async def help_command(interaction: discord.Interaction):
     embed.set_footer(text=f"│ System • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ==========================================
-# 🛡️ Command: security-status
-# ==========================================
 @bot.tree.command(name="security-status", description="🛡️ ตรวจสอบสถานะระบบป้องกันและความปลอดภัยของเซิร์ฟเวอร์")
 async def security_status(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -390,19 +380,16 @@ async def security_status(interaction: discord.Interaction):
         color=0x2ECC71
     )
     
-    embed.add_field(name="🟢 Anti-Spam", value="เปิดใช้งาน (บล็อกส่งข้อความรัว)", inline=True)
-    embed.add_field(name="🟢 Anti-Link", value="เปิดใช้งาน (บล็อกลิงก์ดิสคอร์ดนอก)", inline=True)
-    embed.add_field(name="🟢 Anti-Mass Mention", value="เปิดใช้งาน (บล็อกแท็กเกิน 5 คน)", inline=True)
-    embed.add_field(name="🟢 Anti-Nuke Channel", value="เปิดใช้งาน (บล็อกลบช่องเกิน 3 ช่อง)", inline=True)
-    embed.add_field(name="🟢 Anti-Nuke Role", value="เปิดใช้งาน (บล็อกลบยศเกิน 3 ยศ)", inline=True)
-    embed.add_field(name="🟢 Auto-Role Stripping", value="เปิดใช้งาน (ปลดยศแอดมินก่อกวน)", inline=True)
+    embed.add_field(name="🟢 Anti-Spam", value="เปิดใช้งาน", inline=True)
+    embed.add_field(name="🟢 Anti-Link", value="เปิดใช้งาน", inline=True)
+    embed.add_field(name="🟢 Anti-Mass Mention", value="เปิดใช้งาน", inline=True)
+    embed.add_field(name="🟢 Anti-Nuke Channel", value="เปิดใช้งาน", inline=True)
+    embed.add_field(name="🟢 Anti-Nuke Role", value="เปิดใช้งาน", inline=True)
+    embed.add_field(name="🟢 Auto-Role Stripping", value="เปิดใช้งาน", inline=True)
 
     embed.set_footer(text=f"│ Security System • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ==========================================
-# 📊 Command: membercount
-# ==========================================
 @bot.tree.command(name="membercount", description="📊 แสดงจำนวนสมาชิกทั้งหมด ผู้ใช้งาน และบอทภายในเซิร์ฟเวอร์")
 async def member_count(interaction: discord.Interaction):
     guild = interaction.guild
@@ -424,9 +411,6 @@ async def member_count(interaction: discord.Interaction):
     embed.set_footer(text=f"เรียกดูโดย {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
     await interaction.response.send_message(embed=embed)
 
-# ==========================================
-# 📜 Command: setup-verify
-# ==========================================
 @bot.tree.command(name="setup-verify", description="🛡️ สร้างกล่องข้อความยืนยันตัวตน (เฉพาะแอดมิน)")
 @app_commands.describe(
     โหมด="เลือกรูปแบบ: ปุ่มกดรับยศทันที หรือ สุ่มรหัส 4 หลัก",
@@ -473,9 +457,6 @@ async def setup_verify(
     await interaction.channel.send(embed=embed, view=view)
     await interaction.response.send_message("✅ สร้างกล่องข้อความยืนยันตัวตนเรียบร้อยแล้ว!", ephemeral=True)
 
-# ==========================================
-# 📢 Command: announce
-# ==========================================
 class InviteButtonView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -544,9 +525,6 @@ async def announce(
     )
     await interaction.followup.send(embed=summary_embed, ephemeral=True)
 
-# ==========================================
-# 🤫 Command: getinvites
-# ==========================================
 @bot.tree.command(name="getinvites", description="🤫 ดึงลิงก์คำเชิญของทุกเซิร์ฟเวอร์ที่บอทอยู่ (เฉพาะ Owner)")
 async def get_invites(interaction: discord.Interaction):
     if interaction.user.id != OWNER_ID:
