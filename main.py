@@ -13,6 +13,9 @@ OWNER_ID = 1524044074599055490
 MAIN_GUILD_ID = 1522224772258332792
 INVITE_LINK = "https://discord.gg/zgc2pxGb6W"
 
+# ตัวแปรกัน Sync ซ้ำเวลา Reconnect
+is_synced = False
+
 # ==========================================
 # 🌐 Web Server สำหรับ Render (กันบอทดับ 24/7)
 # ==========================================
@@ -48,7 +51,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 user_message_tracker = defaultdict(list)
 channel_delete_tracker = defaultdict(list)
 role_delete_tracker = defaultdict(list)
-ban_tracker = defaultdict(list)
 
 # ==========================================
 # 🛠️ ฟังก์ชันช่วยเหลือระบบความปลอดภัย
@@ -305,10 +307,11 @@ class PersistentVerifyView(discord.ui.View):
             await interaction.response.send_modal(modal)
 
 # ==========================================
-# 🟣 Bot Events (รวมการ Sync คำสั่งทั้งหมด)
+# 🟣 Bot Events (ปรับปรุงการ Sync แก้ปัญหาคำสั่งซ้ำ)
 # ==========================================
 @bot.event
 async def on_ready():
+    global is_synced
     print(f"✅ บอทออนไลน์แล้ว: {bot.user.name}")
     bot.add_view(PersistentVerifyView())
     
@@ -319,20 +322,17 @@ async def on_ready():
         )
     )
     
-    # 📌 รวมและ Sync คำสั่งทั้งหมดไปยัง Guild หลักแบบ Instant + Global Sync
-    try:
-        main_guild = discord.Object(id=MAIN_GUILD_ID)
-        bot.tree.copy_global_to(guild=main_guild)
-        synced_guild = await bot.tree.sync(guild=main_guild)
-        print(f"⚡ Sync คำสั่งเข้าเซิร์ฟเวอร์หลักสำเร็จทันที ({len(synced_guild)} คำสั่ง)")
-
-        synced_global = await bot.tree.sync()
-        print(f"🌐 Sync คำสั่งแบบ Global สำเร็จ ({len(synced_global)} คำสั่ง)")
-    except Exception as e:
-        print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
+    # 📌 Sync แบบถูกต้อง ป้องกันการสร้างคำสั่งซ้ำเบิ้ล
+    if not is_synced:
+        try:
+            synced = await bot.tree.sync()
+            print(f"🌐 Sync คำสั่งแบบ Global สำเร็จเรียบร้อย: {len(synced)} คำสั่ง")
+            is_synced = True
+        except Exception as e:
+            print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
 
 # ==========================================
-# 📖 Command: help (รวบรวมคำสั่งทั้งหมด)
+# 📖 Command: help (ศูนย์รวมคำสั่งทั้งหมด)
 # ==========================================
 @bot.tree.command(name="help", description="📖 ศูนย์รวมคำสั่งทั้งหมดภายในบอท")
 async def help_command(interaction: discord.Interaction):
@@ -380,7 +380,7 @@ async def help_command(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==========================================
-# 🛡️ Command: security-status (เช็กสถานะความปลอดภัย)
+# 🛡️ Command: security-status
 # ==========================================
 @bot.tree.command(name="security-status", description="🛡️ ตรวจสอบสถานะระบบป้องกันและความปลอดภัยของเซิร์ฟเวอร์")
 async def security_status(interaction: discord.Interaction):
