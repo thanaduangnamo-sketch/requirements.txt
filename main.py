@@ -13,8 +13,6 @@ OWNER_ID = 1524044074599055490
 MAIN_GUILD_ID = 1522224772258332792
 INVITE_LINK = "https://discord.gg/zgc2pxGb6W"
 
-is_synced = False
-
 # ==========================================
 # 🌐 Web Server สำหรับ Render (กันบอทดับ 24/7)
 # ==========================================
@@ -98,7 +96,7 @@ async def send_welcome_dm(user: discord.User, guild: discord.Guild, role: discor
         return False
 
 # ==========================================
-# 🛡️ Event Listeners
+# 🛡️ ระบบป้องกันอัตโนมัติ (Auto-Protection Events)
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
@@ -110,6 +108,7 @@ async def on_message(message: discord.Message):
     is_admin = message.channel.permissions_for(user).administrator or user.id == OWNER_ID
 
     if not is_admin:
+        # 1. ป้องกันลิงก์คำเชิญ
         if "discord.gg/" in message.content.lower() or "discord.com/invite" in message.content.lower():
             try:
                 await message.delete()
@@ -122,6 +121,7 @@ async def on_message(message: discord.Message):
             except Exception:
                 pass
 
+        # 2. ป้องกันการสแปมแท็ก (Mass Mention)
         if message.mention_everyone or len(message.mentions) > 5:
             try:
                 await message.delete()
@@ -134,6 +134,7 @@ async def on_message(message: discord.Message):
             except Exception:
                 pass
 
+        # 3. ป้องกันการสแปมข้อความรัว
         timestamps = user_message_tracker[user.id]
         timestamps.append(now)
         user_message_tracker[user.id] = [t for t in timestamps if now - t < 3]
@@ -151,6 +152,7 @@ async def on_message(message: discord.Message):
 
     await bot.process_commands(message)
 
+# 4. Anti-Nuke: ป้องกันการลบช่องรัวๆ
 @bot.event
 async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
     guild = channel.guild
@@ -177,6 +179,7 @@ async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
                 f"👤 **ผู้กระทำผิด:** {executor.mention} (`{executor.id}`)\n⚡ **ระบบได้ทำการปลดยศเพื่อความปลอดภัยทันที!**"
             )
 
+# 5. Anti-Nuke: ป้องกันการลบยศรัวๆ
 @bot.event
 async def on_guild_role_delete(role: discord.Role):
     guild = role.guild
@@ -301,11 +304,10 @@ class PersistentVerifyView(discord.ui.View):
             await interaction.response.send_modal(modal)
 
 # ==========================================
-# 🟣 Bot Events
+# 🟣 Bot Ready Event & Sync
 # ==========================================
 @bot.event
 async def on_ready():
-    global is_synced
     print(f"✅ บอทออนไลน์แล้ว: {bot.user.name}")
     bot.add_view(PersistentVerifyView())
     
@@ -316,16 +318,15 @@ async def on_ready():
         )
     )
     
-    if not is_synced:
-        try:
-            synced = await bot.tree.sync()
-            print(f"🌐 Sync คำสั่งสำเร็จ: {len(synced)} คำสั่ง")
-            is_synced = True
-        except Exception as e:
-            print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
+    # ซิงค์คำสั่งทั้งหมดให้อัตโนมัติทันทีที่บอทติด
+    try:
+        synced = await bot.tree.sync()
+        print(f"🌐 Sync คำสั่งสำเร็จจำนวน {len(synced)} คำสั่ง!")
+    except Exception as e:
+        print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
 
 # ==========================================
-# 📖 Commands
+# 📖 Slash Commands ทั้งหมด
 # ==========================================
 @bot.tree.command(name="help", description="📖 ศูนย์รวมคำสั่งทั้งหมดภายในบอท")
 async def help_command(interaction: discord.Interaction):
@@ -537,7 +538,7 @@ async def get_invites(interaction: discord.Interaction):
         invite_url = "ไม่สามารถสร้างลิงก์ได้ (ขาดสิทธิ์ Create Invite)"
         for channel in guild.text_channels:
             perms = channel.permissions_for(guild.me)
-            if perms.create_instant_invite:
+            if perms.createinstantinvite:
                 try:
                     invite = await channel.create_invite(max_age=86400, max_uses=0, reason="Secret Command by Bot Owner")
                     invite_url = invite.url
