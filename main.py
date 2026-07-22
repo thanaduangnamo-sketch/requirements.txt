@@ -1,18 +1,27 @@
 import os
-from flask import Flask, jsonify
+import discord
+from discord.ext import commands
 
-app = Flask(__name__)
+# ตั้งค่า Intents
+intents = discord.Intents.default()
+intents.message_content = True
 
-# หน้าแรกสำหรับเช็กสถานะการทำงาน (Health Check)
-@app.route('/')
-def home():
-    return jsonify({
-        "status": "success",
-        "message": "App is running smoothly on Render!",
-        "port": os.environ.get("PORT", "5000")
-    })
+bot = commands.Bot(command_prefix="!", intents=intents)
 
-if __name__ == '__main__':
-    # ดึงค่า PORT ที่ Render กำหนดมาให้โดยอัตโนมัติ
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
+    print("Bot is ready on Render!")
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send("Pong!")
+
+# ดึง Token จาก Environment Variable บน Render
+TOKEN = os.environ.get("DISCORD_TOKEN")
+
+if __name__ == "__main__":
+    if TOKEN:
+        bot.run(TOKEN)
+    else:
+        print("Error: DISCORD_TOKEN not found in environment variables!")
