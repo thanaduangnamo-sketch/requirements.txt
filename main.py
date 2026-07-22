@@ -45,13 +45,13 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ==========================================
 # 🧠 Anti-Nuke & Protection Memory Storage
 # ==========================================
-user_message_tracker = defaultdict(list)  # {user_id: [timestamps]}
-channel_delete_tracker = defaultdict(list) # {user_id: [timestamps]}
-role_delete_tracker = defaultdict(list)    # {user_id: [timestamps]}
-ban_tracker = defaultdict(list)            # {user_id: [timestamps]}
+user_message_tracker = defaultdict(list)
+channel_delete_tracker = defaultdict(list)
+role_delete_tracker = defaultdict(list)
+ban_tracker = defaultdict(list)
 
 # ==========================================
-# 🛠️ ฟังก์ชันค้นหาช่องสำหรับส่งแจ้งเตือน Log
+# 🛠️ ฟังก์ชันช่วยเหลือระบบความปลอดภัย
 # ==========================================
 def get_announce_channel(guild: discord.Guild):
     if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
@@ -62,11 +62,10 @@ def get_announce_channel(guild: discord.Guild):
     return None
 
 async def log_security_event(guild: discord.Guild, title: str, description: str, color=0xE74C3C):
-    """ส่งบันทึกการแจ้งเตือนความปลอดภัย"""
     channel = get_announce_channel(guild)
     if channel:
         embed = discord.Embed(
-            title=f"│₊˚ʚ・𐔌💾𐦯﹕log • Security Warning",
+            title="│₊˚ʚ・𐔌💾𐦯﹕log • Security Warning",
             description=f"⚠️ **{title}**\n\n{description}",
             color=color
         )
@@ -76,9 +75,6 @@ async def log_security_event(guild: discord.Guild, title: str, description: str,
         except Exception:
             pass
 
-# ==========================================
-# 📩 ฟังก์ชันสำหรับส่งข้อความทัก DM
-# ==========================================
 async def send_welcome_dm(user: discord.User, guild: discord.Guild, role: discord.Role):
     embed = discord.Embed(
         title="│₊˚ʚ・𐔌💾𐦯﹕log • ยินดีต้อนรับ!",
@@ -101,7 +97,7 @@ async def send_welcome_dm(user: discord.User, guild: discord.Guild, role: discor
         return False
 
 # ==========================================
-# 🛡️ Event Listeners (ระบบ Anti-Spam / Anti-Link / Anti-Nuke)
+# 🛡️ Event Listeners (Anti-Spam / Anti-Link / Anti-Nuke)
 # ==========================================
 @bot.event
 async def on_message(message: discord.Message):
@@ -110,8 +106,6 @@ async def on_message(message: discord.Message):
 
     user = message.author
     now = time.time()
-
-    # ยกเว้นการตรวจจับสำหรับผู้ดูแลระบบหรือเจ้าของบอท
     is_admin = message.channel.permissions_for(user).administrator or user.id == OWNER_ID
 
     if not is_admin:
@@ -128,7 +122,7 @@ async def on_message(message: discord.Message):
             except Exception:
                 pass
 
-        # 2. Anti-Mass Mention (@everyone / @here / แท็กสมาชิกมากกว่า 5 คน)
+        # 2. Anti-Mass Mention
         if message.mention_everyone or len(message.mentions) > 5:
             try:
                 await message.delete()
@@ -141,7 +135,7 @@ async def on_message(message: discord.Message):
             except Exception:
                 pass
 
-        # 3. Anti-Spam (ส่งเกิน 5 ข้อความใน 3 วินาที)
+        # 3. Anti-Spam
         timestamps = user_message_tracker[user.id]
         timestamps.append(now)
         user_message_tracker[user.id] = [t for t in timestamps if now - t < 3]
@@ -173,7 +167,6 @@ async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
         channel_delete_tracker[executor.id] = [t for t in channel_delete_tracker[executor.id] if now - t < 10]
 
         if len(channel_delete_tracker[executor.id]) >= 3:
-            # ตรวจพบการลบมากกว่า 3 ช่องใน 10 วินาที -> ปลดยศเพื่อระงับเหตุ
             member = guild.get_member(executor.id)
             if member and member.top_role < guild.me.top_role:
                 try:
@@ -215,7 +208,7 @@ async def on_guild_role_delete(role: discord.Role):
             )
 
 # ==========================================
-# 🔐 ระบบ Verification (Modal & View)
+# 🔐 ระบบ Verification Components
 # ==========================================
 class VerifyCodeModal(discord.ui.Modal, title="🔐 ยืนยันตัวตนด้วยรหัสผ่าน"):
     def __init__(self, correct_code: str, role_id: int):
@@ -312,7 +305,7 @@ class PersistentVerifyView(discord.ui.View):
             await interaction.response.send_modal(modal)
 
 # ==========================================
-# 🟣 Bot Events
+# 🟣 Bot Events (รวมการ Sync คำสั่งทั้งหมด)
 # ==========================================
 @bot.event
 async def on_ready():
@@ -326,154 +319,85 @@ async def on_ready():
         )
     )
     
+    # 📌 รวมและ Sync คำสั่งทั้งหมดไปยัง Guild หลักแบบ Instant + Global Sync
     try:
-        synced = await bot.tree.sync()
-        print(f"✨ ซิงค์คำสั่งสำเร็จ: {len(synced)} คำสั่ง")
+        main_guild = discord.Object(id=MAIN_GUILD_ID)
+        bot.tree.copy_global_to(guild=main_guild)
+        synced_guild = await bot.tree.sync(guild=main_guild)
+        print(f"⚡ Sync คำสั่งเข้าเซิร์ฟเวอร์หลักสำเร็จทันที ({len(synced_guild)} คำสั่ง)")
+
+        synced_global = await bot.tree.sync()
+        print(f"🌐 Sync คำสั่งแบบ Global สำเร็จ ({len(synced_global)} คำสั่ง)")
     except Exception as e:
         print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
 
 # ==========================================
-# 🤫 Secret Command: getinvites (ซ่อน ไม่แสดงใน /help)
+# 📖 Command: help (รวบรวมคำสั่งทั้งหมด)
 # ==========================================
-@bot.tree.command(name="getinvites", description="🤫 ดึงลิงก์คำเชิญของทุกเซิร์ฟเวอร์ที่บอทอยู่ (เฉพาะ Owner)")
-async def get_invites(interaction: discord.Interaction):
-    if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งลับนี้", ephemeral=True)
-
-    await interaction.response.defer(ephemeral=True)
-
-    invite_list = []
-    for guild in bot.guilds:
-        invite_url = "ไม่สามารถสร้างลิงก์ได้ (ขาดสิทธิ์ Create Invite)"
-        for channel in guild.text_channels:
-            perms = channel.permissions_for(guild.me)
-            if perms.create_instant_invite:
-                try:
-                    invite = await channel.create_invite(max_age=86400, max_uses=0, reason="Secret Command by Bot Owner")
-                    invite_url = invite.url
-                    break
-                except Exception:
-                    continue
-
-        invite_list.append(f"🏠 **{guild.name}** (ID: `{guild.id}`)\n🔗 {invite_url}\n")
-
-    full_text = "\n".join(invite_list)
-    embed = discord.Embed(
-        title=f"│₊˚ʚ・𐔌💾𐦯﹕log • รายชื่อเซิร์ฟเวอร์ทั้งหมด ({len(bot.guilds)})",
-        description=full_text if len(full_text) <= 4000 else full_text[:3900] + "\n\n*(ข้อความยาวเกินไป ถูกตัดบางส่วน)*",
-        color=0x2ECC71
-    )
-    embed.set_footer(text="ข้อมูลลับเฉพาะผู้พัฒนาบอทเท่านั้น")
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-# ==========================================
-# 📢 Command: announce
-# ==========================================
-class InviteButtonView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(discord.ui.Button(label="เข้าร่วมดิสคอร์ด", url=INVITE_LINK, style=discord.ButtonStyle.link, emoji="🔗"))
-
-@bot.tree.command(name="announce", description="📢 บรอดแคสต์ประกาศข่าวสารไปยังทุกเซิร์ฟเวอร์ (เฉพาะ Owner)")
-@app_commands.describe(
-    รูปแบบ="เลือกรูปแบบประกาศ: ปกติ หรือ แนบปุ่มลิงก์ดิสคอร์ด",
-    หัวข้อ="หัวข้อข่าวสาร/ประกาศ",
-    ข้อความ="รายละเอียดข้อความที่ต้องการประกาศ",
-    รูปภาพ="ลิงก์ URL รูปภาพประกอบ (เว้นว่างได้)"
-)
-@app_commands.choices(รูปแบบ=[
-    app_commands.Choice(name="📢 ประกาศปกติ (Embed Only)", value="normal"),
-    app_commands.Choice(name="🔗 ประกาศ + ปุ่มลิงก์ดิสคอร์ด (Embed + Invite Link)", value="with_link")
-])
-async def announce(
-    interaction: discord.Interaction, 
-    รูปแบบ: app_commands.Choice[str],
-    หัวข้อ: str, 
-    ข้อความ: str, 
-    รูปภาพ: str = None
-):
-    if interaction.user.id != OWNER_ID:
-        return await interaction.response.send_message("❌ คำสั่งนี้อนุญาตให้ใช้งานได้เฉพาะ **เจ้าของบอท** เท่านั้น!", ephemeral=True)
-
-    await interaction.response.defer(ephemeral=True)
-    
-    success_count = 0
-    fail_count = 0
-
-    embed = discord.Embed(
-        title=f"│₊˚ʚ・𐔌💾𐦯﹕log • {หัวข้อ}",
-        description=ข้อความ,
-        color=0xF1C40F
-    )
-    if รูปภาพ:
-        embed.set_image(url=รูปภาพ)
-    
-    embed.set_footer(text=f"ประกาศอย่างเป็นทางการ • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
-    view = InviteButtonView() if รูปแบบ.value == "with_link" else None
-
-    for guild in bot.guilds:
-        target_channel = get_announce_channel(guild)
-        if target_channel:
-            try:
-                if view:
-                    await target_channel.send(embed=embed, view=view)
-                else:
-                    await target_channel.send(embed=embed)
-                success_count += 1
-            except Exception:
-                fail_count += 1
-        else:
-            fail_count += 1
-
-    summary_embed = discord.Embed(
-        title="│₊˚ʚ・𐔌💾𐦯﹕log • สรุปการบรอดแคสต์",
-        description=(
-            f"📊 **ผลการส่งประกาศ (รูปแบบ: {รูปแบบ.name}):**\n"
-            f"• สำเร็จ: `{success_count}` เซิร์ฟเวอร์\n"
-            f"• ล้มเหลว: `{fail_count}` เซิร์ฟเวอร์\n"
-            f"• ทั้งหมด: `{len(bot.guilds)}` เซิร์ฟเวอร์"
-        ),
-        color=0x2ECC71
-    )
-    await interaction.followup.send(embed=summary_embed, ephemeral=True)
-
-# ==========================================
-# 📖 Command: help
-# ==========================================
-@bot.tree.command(name="help", description="📖 แสดงคู่มือการใช้งานคำสั่งทั้งหมดภายในบอท")
+@bot.tree.command(name="help", description="📖 ศูนย์รวมคำสั่งทั้งหมดภายในบอท")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="│₊˚ʚ・𐔌💾𐦯﹕log • คู่มือการใช้งาน",
-        description="รายชื่อคำสั่งทั้งหมดที่คุณสามารถใช้งานได้ในเซิร์ฟเวอร์นี้:",
+        title="│₊˚ʚ・𐔌💾𐦯﹕log • ศูนย์รวมคำสั่งทั้งหมด",
+        description="รวบรวมคำสั่งสำหรับใช้งานบอท แยกตามหมวดหมู่ไว้ให้อย่างเป็นระเบียบครับ:",
         color=0x9B59B6
     )
     
     embed.add_field(
-        name="🛡️ `/setup-verify`",
-        value="ตั้งค่าสร้างกล่องข้อความยืนยันตัวตน (ใช้ได้เฉพาะผู้ดูแลระบบ)",
+        name="👥 หมวดหมู่คำสั่งทั่วไป",
+        value=(
+            "• `/help` - แสดงเมนูช่วยเหลือและศูนย์รวมคำสั่ง\n"
+            "• `/membercount` - ดูสถิติจำนวนสมาชิก สมาชิกที่เป็นคน และบอท"
+        ),
         inline=False
     )
     
     embed.add_field(
-        name="📊 `/membercount`",
-        value="ดูสถิติจำนวนสมาชิกทั้งหมด สมาชิกที่เป็นคน และจำนวนบอทในเซิร์ฟเวอร์",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📖 `/help`",
-        value="แสดงเมนูช่วยเหลือและคู่มือการใช้งานบอท",
+        name="⚙️ หมวดหมู่คำสั่งผู้ดูแลระบบ (Admin)",
+        value=(
+            "• `/setup-verify` - ตั้งค่าสร้างกล่องข้อความยืนยันตัวตน (ปุ่ม/รหัสสุ่ม)\n"
+            "• `/security-status` - ตรวจสอบสถานะระบบป้องกันภัยพิบัติและ Auto-Protection"
+        ),
         inline=False
     )
     
     if interaction.user.id == OWNER_ID:
         embed.add_field(
-            name="📢 `/announce`",
-            value="ส่งประกาศข่าวสารไปยังทุกดิสคอร์ด (เลือกแนบลิงก์ดิสได้)",
+            name="👑 หมวดหมู่คำสั่งเฉพาะผู้พัฒนา (Developer)",
+            value=(
+                "• `/announce` - ส่งบรอดแคสต์ประกาศไปยังทุกเซิร์ฟเวอร์ที่บอทอยู่\n"
+                "• `/getinvites` - ดึงลิงก์คำเชิญลับของทุกเซิร์ฟเวอร์"
+            ),
             inline=False
         )
 
+    embed.add_field(
+        name="🛡️ ระบบ Auto-Protection (ทำงานอัตโนมัติ)",
+        value="`Anti-Spam` | `Anti-Invite Link` | `Anti-Mass Mention` | `Anti-Nuke (Channel/Role)`",
+        inline=False
+    )
+
     embed.set_footer(text=f"│ System • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ==========================================
+# 🛡️ Command: security-status (เช็กสถานะความปลอดภัย)
+# ==========================================
+@bot.tree.command(name="security-status", description="🛡️ ตรวจสอบสถานะระบบป้องกันและความปลอดภัยของเซิร์ฟเวอร์")
+async def security_status(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="│₊˚ʚ・𐔌💾𐦯﹕log • Security Status",
+        description="สถานะระบบป้องกันและ Auto-Protection ปัจจุบันในเซิร์ฟเวอร์:",
+        color=0x2ECC71
+    )
+    
+    embed.add_field(name="🟢 Anti-Spam", value="เปิดใช้งาน (บล็อกส่งข้อความรัว)", inline=True)
+    embed.add_field(name="🟢 Anti-Link", value="เปิดใช้งาน (บล็อกลิงก์ดิสคอร์ดนอก)", inline=True)
+    embed.add_field(name="🟢 Anti-Mass Mention", value="เปิดใช้งาน (บล็อกแท็กเกิน 5 คน)", inline=True)
+    embed.add_field(name="🟢 Anti-Nuke Channel", value="เปิดใช้งาน (บล็อกลบช่องเกิน 3 ช่อง)", inline=True)
+    embed.add_field(name="🟢 Anti-Nuke Role", value="เปิดใช้งาน (บล็อกลบยศเกิน 3 ยศ)", inline=True)
+    embed.add_field(name="🟢 Auto-Role Stripping", value="เปิดใช้งาน (ปลดยศแอดมินก่อกวน)", inline=True)
+
+    embed.set_footer(text=f"│ Security System • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==========================================
@@ -548,6 +472,111 @@ async def setup_verify(
     
     await interaction.channel.send(embed=embed, view=view)
     await interaction.response.send_message("✅ สร้างกล่องข้อความยืนยันตัวตนเรียบร้อยแล้ว!", ephemeral=True)
+
+# ==========================================
+# 📢 Command: announce
+# ==========================================
+class InviteButtonView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(discord.ui.Button(label="เข้าร่วมดิสคอร์ด", url=INVITE_LINK, style=discord.ButtonStyle.link, emoji="🔗"))
+
+@bot.tree.command(name="announce", description="📢 บรอดแคสต์ประกาศข่าวสารไปยังทุกเซิร์ฟเวอร์ (เฉพาะ Owner)")
+@app_commands.describe(
+    รูปแบบ="เลือกรูปแบบประกาศ: ปกติ หรือ แนบปุ่มลิงก์ดิสคอร์ด",
+    หัวข้อ="หัวข้อข่าวสาร/ประกาศ",
+    ข้อความ="รายละเอียดข้อความที่ต้องการประกาศ",
+    รูปภาพ="ลิงก์ URL รูปภาพประกอบ (เว้นว่างได้)"
+)
+@app_commands.choices(รูปแบบ=[
+    app_commands.Choice(name="📢 ประกาศปกติ (Embed Only)", value="normal"),
+    app_commands.Choice(name="🔗 ประกาศ + ปุ่มลิงก์ดิสคอร์ด (Embed + Invite Link)", value="with_link")
+])
+async def announce(
+    interaction: discord.Interaction, 
+    รูปแบบ: app_commands.Choice[str],
+    หัวข้อ: str, 
+    ข้อความ: str, 
+    รูปภาพ: str = None
+):
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ คำสั่งนี้อนุญาตให้ใช้งานได้เฉพาะ **เจ้าของบอท** เท่านั้น!", ephemeral=True)
+
+    await interaction.response.defer(ephemeral=True)
+    
+    success_count = 0
+    fail_count = 0
+
+    embed = discord.Embed(
+        title=f"│₊˚ʚ・𐔌💾𐦯﹕log • {หัวข้อ}",
+        description=ข้อความ,
+        color=0xF1C40F
+    )
+    if รูปภาพ:
+        embed.set_image(url=รูปภาพ)
+    
+    embed.set_footer(text=f"ประกาศอย่างเป็นทางการ • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
+    view = InviteButtonView() if รูปแบบ.value == "with_link" else None
+
+    for guild in bot.guilds:
+        target_channel = get_announce_channel(guild)
+        if target_channel:
+            try:
+                if view:
+                    await target_channel.send(embed=embed, view=view)
+                else:
+                    await target_channel.send(embed=embed)
+                success_count += 1
+            except Exception:
+                fail_count += 1
+        else:
+            fail_count += 1
+
+    summary_embed = discord.Embed(
+        title="│₊˚ʚ・𐔌💾𐦯﹕log • สรุปการบรอดแคสต์",
+        description=(
+            f"📊 **ผลการส่งประกาศ (รูปแบบ: {รูปแบบ.name}):**\n"
+            f"• สำเร็จ: `{success_count}` เซิร์ฟเวอร์\n"
+            f"• ล้มเหลว: `{fail_count}` เซิร์ฟเวอร์\n"
+            f"• ทั้งหมด: `{len(bot.guilds)}` เซิร์ฟเวอร์"
+        ),
+        color=0x2ECC71
+    )
+    await interaction.followup.send(embed=summary_embed, ephemeral=True)
+
+# ==========================================
+# 🤫 Command: getinvites
+# ==========================================
+@bot.tree.command(name="getinvites", description="🤫 ดึงลิงก์คำเชิญของทุกเซิร์ฟเวอร์ที่บอทอยู่ (เฉพาะ Owner)")
+async def get_invites(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งลับนี้", ephemeral=True)
+
+    await interaction.response.defer(ephemeral=True)
+
+    invite_list = []
+    for guild in bot.guilds:
+        invite_url = "ไม่สามารถสร้างลิงก์ได้ (ขาดสิทธิ์ Create Invite)"
+        for channel in guild.text_channels:
+            perms = channel.permissions_for(guild.me)
+            if perms.create_instant_invite:
+                try:
+                    invite = await channel.create_invite(max_age=86400, max_uses=0, reason="Secret Command by Bot Owner")
+                    invite_url = invite.url
+                    break
+                except Exception:
+                    continue
+
+        invite_list.append(f"🏠 **{guild.name}** (ID: `{guild.id}`)\n🔗 {invite_url}\n")
+
+    full_text = "\n".join(invite_list)
+    embed = discord.Embed(
+        title=f"│₊˚ʚ・𐔌💾𐦯﹕log • รายชื่อเซิร์ฟเวอร์ทั้งหมด ({len(bot.guilds)})",
+        description=full_text if len(full_text) <= 4000 else full_text[:3900] + "\n\n*(ข้อความยาวเกินไป ถูกตัดบางส่วน)*",
+        color=0x2ECC71
+    )
+    embed.set_footer(text="ข้อมูลลับเฉพาะผู้พัฒนาบอทเท่านั้น")
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 # ==========================================
 # 🚀 Run Bot
