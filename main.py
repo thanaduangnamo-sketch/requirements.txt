@@ -10,7 +10,7 @@ from discord import app_commands
 MAIN_GUILD_ID = 1522224772258332792
 
 # ==========================================
-# 🌐 Web Server สำหรับ Render (กันบอทดับ)
+# 🌐 Web Server สำหรับ Render (กันบอทดับ 24/7)
 # ==========================================
 class AliveServer(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -37,15 +37,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ==========================================
 # 🔐 ระบบ Verification (Modal & View)
 # ==========================================
-class VerifyCodeModal(discord.ui.Modal, title="🔐 Verify Identity"):
+class VerifyCodeModal(discord.ui.Modal, title="🔐 ยืนยันตัวตนด้วยรหัสผ่าน"):
     def __init__(self, correct_code: str, role_id: int):
         super().__init__()
         self.correct_code = correct_code
         self.role_id = role_id
 
         self.code_input = discord.ui.TextInput(
-            label=f"🔢 Enter Code: {correct_code}",
-            placeholder="Type the 4-digit code shown above...",
+            label=f"🔢 พิมพ์รหัสผ่านนี้: {correct_code}",
+            placeholder="กรอกตัวเลข 4 หลักตามที่เห็นข้างบน...",
             min_length=4,
             max_length=4,
             required=True
@@ -59,19 +59,19 @@ class VerifyCodeModal(discord.ui.Modal, title="🔐 Verify Identity"):
                 try:
                     await interaction.user.add_roles(role)
                     embed = discord.Embed(
-                        title="🎉 Verification Successful!",
-                        description=f"Welcome {interaction.user.mention} ✨\nYou have been given the **{role.name}** role.",
+                        title="🎉 ยืนยันตัวตนสำเร็จ!",
+                        description=f"ยินดีต้อนรับ {interaction.user.mention} ✨\nคุณได้รับยศ **{role.name}** เรียบร้อยแล้วครับ",
                         color=discord.Color.green()
                     )
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                 except discord.Forbidden:
-                    await interaction.response.send_message("❌ Bot permission error. Please move bot's role higher.", ephemeral=True)
+                    await interaction.response.send_message("❌ บอทมียศต่ำกว่ายศที่จะมอบ โปรดย้ายยศบอทขึ้นไปข้างบน", ephemeral=True)
             else:
-                await interaction.response.send_message("❌ Role not found in server.", ephemeral=True)
+                await interaction.response.send_message("❌ ไม่พบยศในระบบ", ephemeral=True)
         else:
             embed = discord.Embed(
-                title="❌ Invalid Code!",
-                description="Please click the button to try again.",
+                title="❌ รหัสผ่านไม่ถูกต้อง!",
+                description="กรุณากดปุ่มเพื่อลองใหม่อีกครั้ง",
                 color=discord.Color.red()
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -82,7 +82,7 @@ class PersistentVerifyView(discord.ui.View):
         self.mode = mode
         self.role_id = role_id
 
-    @discord.ui.button(label="Click to Verify", style=discord.ButtonStyle.success, emoji="🛡️", custom_id="persistent_verify_btn")
+    @discord.ui.button(label="กดเพื่อยืนยันตัวตน", style=discord.ButtonStyle.success, emoji="🛡️", custom_id="persistent_verify_btn")
     async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         role_id_to_use = self.role_id
         current_mode = self.mode
@@ -101,25 +101,25 @@ class PersistentVerifyView(discord.ui.View):
                     pass
 
         if not role_id_to_use:
-            return await interaction.response.send_message("❌ Role settings not found.", ephemeral=True)
+            return await interaction.response.send_message("❌ ไม่พบข้อมูลยศในการตั้งค่า", ephemeral=True)
 
         if current_mode == "button":
             role = interaction.guild.get_role(role_id_to_use)
             if role:
                 if role in interaction.user.roles:
-                    return await interaction.response.send_message("✨ You already have this role!", ephemeral=True)
+                    return await interaction.response.send_message("✨ คุณมียศนี้อยู่แล้วครับ!", ephemeral=True)
                 try:
                     await interaction.user.add_roles(role)
                     embed = discord.Embed(
-                        title="🎉 Verification Successful!",
-                        description=f"Welcome {interaction.user.mention} ✨\nYou have been given the **{role.name}** role.",
+                        title="🎉 ยืนยันตัวตนสำเร็จ!",
+                        description=f"ยินดีต้อนรับ {interaction.user.mention} ✨\nคุณได้รับยศ **{role.name}** เรียบร้อยแล้วครับ",
                         color=discord.Color.green()
                     )
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                 except discord.Forbidden:
-                    await interaction.response.send_message("❌ Bot permission error.", ephemeral=True)
+                    await interaction.response.send_message("❌ บอทมียศต่ำกว่ายศที่จะมอบ", ephemeral=True)
             else:
-                await interaction.response.send_message("❌ Role not found.", ephemeral=True)
+                await interaction.response.send_message("❌ ไม่พบยศในระบบ", ephemeral=True)
         else:
             generated_code = str(random.randint(1000, 9999))
             modal = VerifyCodeModal(correct_code=generated_code, role_id=role_id_to_use)
@@ -130,59 +130,59 @@ class PersistentVerifyView(discord.ui.View):
 # ==========================================
 @bot.event
 async def on_ready():
-    print(f"✅ Bot is online: {bot.user.name}")
+    print(f"✅ บอทออนไลน์แล้ว: {bot.user.name}")
     bot.add_view(PersistentVerifyView())
     
     # 🟣 ตั้งค่าสถานะเป็น "สตรีมมิ่ง" (เม็ดม่วง)
     await bot.change_presence(
         activity=discord.Streaming(
-            name="🛡️ Verification & Server Stats 24/7",
+            name="🛡️ ระบบยืนยันตัวตน & สถิติสมาชิก 24/7",
             url="https://www.twitch.tv/discord"
         )
     )
     
     try:
         synced = await bot.tree.sync()
-        print(f"✨ Synced {len(synced)} commands.")
+        print(f"✨ ซิงค์คำสั่งสำเร็จ: {len(synced)} คำสั่ง")
     except Exception as e:
-        print(f"❌ Failed to sync commands: {e}")
+        print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
 
 # ==========================================
-# 📖 Command: Help (ภาษาอังกฤษ)
+# 📖 Command: help (ชื่อคำสั่งภาษาอังกฤษ / คำอธิบายภาษาไทย)
 # ==========================================
-@bot.tree.command(name="help", description="📖 Display available commands and bot features")
+@bot.tree.command(name="help", description="📖 แสดงคู่มือการใช้งานคำสั่งทั้งหมดภายในบอท")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
-        title="🤖 Bot Command Guide",
-        description="Here is a list of all available commands for this server:",
+        title="🤖 คู่มือการใช้งานคำสั่งบอท",
+        description="รายชื่อคำสั่งทั้งหมดที่คุณสามารถใช้งานได้ในเซิร์ฟเวอร์นี้:",
         color=0x9B59B6
     )
     
     embed.add_field(
         name="🛡️ `/setup-verify`",
-        value="Set up a verification message with button or code mode (Admin only).",
+        value="ตั้งค่าสร้างกล่องข้อความยืนยันตัวตน (ใช้ได้เฉพาะผู้ดูแลระบบ)",
         inline=False
     )
     
     embed.add_field(
         name="📊 `/membercount`",
-        value="Display total members, human users, and bots count in the server.",
+        value="ดูสถิติจำนวนสมาชิกทั้งหมด สมาชิกที่เป็นคน และจำนวนบอทในเซิร์ฟเวอร์",
         inline=False
     )
     
     embed.add_field(
         name="📖 `/help`",
-        value="Show this command help panel.",
+        value="แสดงเมนูช่วยเหลือและคู่มือการใช้งานบอท",
         inline=False
     )
     
-    embed.set_footer(text="Verification & Utility Bot • 24/7 Active", icon_url=bot.user.display_avatar.url)
+    embed.set_footer(text="ระบบยืนยันตัวตนและจัดการเซิร์ฟเวอร์ • ออนไลน์ 24 ชม.", icon_url=bot.user.display_avatar.url)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ==========================================
-# 📊 Command: Member Count (นับจำนวนคน)
+# 📊 Command: membercount (ชื่อคำสั่งภาษาอังกฤษ / คำอธิบายภาษาไทย)
 # ==========================================
-@bot.tree.command(name="membercount", description="📊 Show total members, humans, and bots in this server")
+@bot.tree.command(name="membercount", description="📊 แสดงจำนวนสมาชิกทั้งหมด ผู้ใช้งาน และบอทภายในเซิร์ฟเวอร์")
 async def member_count(interaction: discord.Interaction):
     guild = interaction.guild
     
@@ -191,72 +191,72 @@ async def member_count(interaction: discord.Interaction):
     bots = len([m for m in guild.members if m.bot])
     
     embed = discord.Embed(
-        title=f"📊 Server Member Statistics - {guild.name}",
+        title=f"📊 สถิติจำนวนสมาชิก - {guild.name}",
         color=0x3498DB
     )
     
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
         
-    embed.add_field(name="👥 Total Members", value=f"**{total_members:,}**", inline=True)
-    embed.add_field(name="🧑 Humans", value=f"**{humans:,}**", inline=True)
-    embed.add_field(name="🤖 Bots", value=f"**{bots:,}**", inline=True)
+    embed.add_field(name="👥 สมาชิกทั้งหมด", value=f"**{total_members:,}** คน", inline=True)
+    embed.add_field(name="🧑 คน (Humans)", value=f"**{humans:,}** คน", inline=True)
+    embed.add_field(name="🤖 บอท (Bots)", value=f"**{bots:,}** ตัว", inline=True)
     
-    embed.set_footer(text=f"Requested by {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
+    embed.set_footer(text=f"เรียกดูโดย {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
     
     await interaction.response.send_message(embed=embed)
 
 # ==========================================
-# 📜 Command: ตั้งค่ายืนยันตัวตน
+# 📜 Command: setup-verify (ชื่อคำสั่งภาษาอังกฤษ / ตัวแปรและคำอธิบายภาษาไทย)
 # ==========================================
-@bot.tree.command(name="setup-verify", description="🛡️ Create a verification panel (Admin only)")
+@bot.tree.command(name="setup-verify", description="🛡️ สร้างกล่องข้อความยืนยันตัวตน (เฉพาะแอดมิน)")
 @app_commands.describe(
-    mode="Mode: button (Instant role) or code (4-digit random code)",
-    role="Role to give to verified users",
-    title="Embed title",
-    description="Embed description (Optional)",
-    image_url="Embed image URL (Optional)"
+    โหมด="เลือกรูปแบบ: ปุ่มกดรับยศทันที หรือ สุ่มรหัส 4 หลัก",
+    ยศ="เลือกยศที่จะมอบให้ผู้ใช้งานหลังยืนยันสำเร็จ",
+    หัวข้อ="ข้อความหัวข้อประกาศ (Title)",
+    รายละเอียด="รายละเอียดเนื้อหาเพิ่มเติม (เว้นว่างไว้ได้)",
+    รูปภาพ="ลิงก์ URL รูปภาพประกอบ Embed (เว้นว่างไว้ได้)"
 )
-@app_commands.choices(mode=[
-    app_commands.Choice(name="🔘 Button Mode (Instant Role)", value="button"),
-    app_commands.Choice(name="🔐 Random Code Mode (4-Digits)", value="code")
+@app_commands.choices(โหมด=[
+    app_commands.Choice(name="🔘 ปุ่มกดรับยศทันที (Button Mode)", value="button"),
+    app_commands.Choice(name="🔐 กรอกรหัสสุ่ม 4 หลัก (Random Code Mode)", value="code")
 ])
 @app_commands.default_permissions(administrator=True)
 async def setup_verify(
     interaction: discord.Interaction, 
-    mode: app_commands.Choice[str],
-    role: discord.Role, 
-    title: str, 
-    description: str = None, 
-    image_url: str = None
+    โหมด: app_commands.Choice[str],
+    ยศ: discord.Role, 
+    หัวข้อ: str, 
+    รายละเอียด: str = None, 
+    รูปภาพ: str = None
 ):
     if interaction.guild_id != MAIN_GUILD_ID:
-        return await interaction.response.send_message("❌ Allowed only on the main server.", ephemeral=True)
+        return await interaction.response.send_message("❌ อนุญาตให้ใช้เฉพาะในเซิร์ฟเวอร์หลักเท่านั้น", ephemeral=True)
 
-    if not description:
-        if mode.value == "button":
-            description = "Click the **Click to Verify** button below to get verified and access the server ✨"
+    if not รายละเอียด:
+        if โหมด.value == "button":
+            รายละเอียด = "กดปุ่ม **ยืนยันตัวตน** ด้านล่างเพื่อรับยศเข้าใช้งานเซิร์ฟเวอร์ได้ทันที ✨"
         else:
-            description = "Click the **Click to Verify** button below, then enter the 4-digit code to get verified ✨"
+            รายละเอียด = "กดปุ่ม **ยืนยันตัวตน** ด้านล่างเพื่อรับรหัสผ่านสุ่ม 4 หลัก แล้วกรอกให้ถูกต้องเพื่อรับยศ ✨"
 
     embed = discord.Embed(
-        title=title,
-        description=f"{description}\n\n🎁 **Role granted:** {role.mention}",
+        title=หัวข้อ,
+        description=f"{รายละเอียด}\n\n🎁 **ยศที่จะได้รับ:** {ยศ.mention}",
         color=0x9B59B6
     )
     
-    if image_url:
-        embed.set_image(url=image_url)
+    if รูปภาพ:
+        embed.set_image(url=รูปภาพ)
 
     if interaction.guild.icon:
         embed.set_thumbnail(url=interaction.guild.icon.url)
         
-    embed.set_footer(text=f"Verification System | MODE:{mode.value} | ROLE:{role.id}", icon_url=bot.user.display_avatar.url)
+    embed.set_footer(text=f"Verification System | MODE:{โหมด.value} | ROLE:{ยศ.id}", icon_url=bot.user.display_avatar.url)
 
-    view = PersistentVerifyView(mode=mode.value, role_id=role.id)
+    view = PersistentVerifyView(mode=โหมด.value, role_id=ยศ.id)
     
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ Verification setup created successfully!", ephemeral=True)
+    await interaction.response.send_message("✅ สร้างกล่องข้อความยืนยันตัวตนเรียบร้อยแล้ว!", ephemeral=True)
 
 # ==========================================
 # 🚀 Run Bot
@@ -265,4 +265,4 @@ token = os.environ.get("DISCORD_TOKEN")
 if token:
     bot.run(token)
 else:
-    print("❌ DISCORD_TOKEN not found in Environment Variables")
+    print("❌ ไม่พบ DISCORD_TOKEN ใน Environment Variables")
