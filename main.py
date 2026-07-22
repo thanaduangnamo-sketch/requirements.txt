@@ -1,8 +1,6 @@
 import os
 import random
-import time
 import threading
-from collections import defaultdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import discord
 from discord.ext import commands
@@ -38,42 +36,12 @@ intents.members = True
 intents.guilds = True
 intents.messages = True
 intents.message_content = True
-intents.moderation = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ==========================================
-# 🧠 Anti-Nuke & Protection Memory Storage
+# 🛠️ ฟังก์ชันช่วยเหลือ
 # ==========================================
-user_message_tracker = defaultdict(list)
-channel_delete_tracker = defaultdict(list)
-role_delete_tracker = defaultdict(list)
-
-# ==========================================
-# 🛠️ ฟังก์ชันช่วยเหลือระบบความปลอดภัย
-# ==========================================
-def get_announce_channel(guild: discord.Guild):
-    if guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
-        return guild.system_channel
-    for ch in guild.text_channels:
-        if ch.permissions_for(guild.me).send_messages:
-            return ch
-    return None
-
-async def log_security_event(guild: discord.Guild, title: str, description: str, color=0xE74C3C):
-    channel = get_announce_channel(guild)
-    if channel:
-        embed = discord.Embed(
-            title="│₊˚ʚ・𐔌💾𐦯﹕log • Security Warning",
-            description=f"⚠️ **{title}**\n\n{description}",
-            color=color
-        )
-        embed.set_footer(text=f"│ Auto-Protection • {INVITE_LINK}")
-        try:
-            await channel.send(embed=embed)
-        except Exception:
-            pass
-
 async def send_welcome_dm(user: discord.User, guild: discord.Guild, role: discord.Role):
     embed = discord.Embed(
         title="│₊˚ʚ・𐔌💾𐦯﹕log • ยินดีต้อนรับ!",
@@ -94,117 +62,6 @@ async def send_welcome_dm(user: discord.User, guild: discord.Guild, role: discor
         return True
     except Exception:
         return False
-
-# ==========================================
-# 🛡️ ระบบป้องกันอัตโนมัติ (Auto-Protection Events)
-# ==========================================
-@bot.event
-async def on_message(message: discord.Message):
-    if message.author.bot or not message.guild:
-        return
-
-    user = message.author
-    now = time.time()
-    is_admin = message.channel.permissions_for(user).administrator or user.id == OWNER_ID
-
-    if not is_admin:
-        # 1. ป้องกันลิงก์คำเชิญ
-        if "discord.gg/" in message.content.lower() or "discord.com/invite" in message.content.lower():
-            try:
-                await message.delete()
-                await log_security_event(
-                    message.guild,
-                    "ตรวจพบการส่งลิงก์คำเชิญ!",
-                    f"👤 **ผู้ส่ง:** {user.mention} (`{user.id}`)\n💬 **ข้อความถูกลบเรียบร้อยแล้ว**"
-                )
-                return
-            except Exception:
-                pass
-
-        # 2. ป้องกันการสแปมแท็ก (Mass Mention)
-        if message.mention_everyone or len(message.mentions) > 5:
-            try:
-                await message.delete()
-                await log_security_event(
-                    message.guild,
-                    "ตรวจพบการแท็กจำนวนมาก (Mass Mention)!",
-                    f"👤 **ผู้ส่ง:** {user.mention} (`{user.id}`)\n💬 **ข้อความถูกลบเนื่องจากพยายามสแปมแท็ก**"
-                )
-                return
-            except Exception:
-                pass
-
-        # 3. ป้องกันการสแปมข้อความรัว
-        timestamps = user_message_tracker[user.id]
-        timestamps.append(now)
-        user_message_tracker[user.id] = [t for t in timestamps if now - t < 3]
-
-        if len(user_message_tracker[user.id]) > 5:
-            try:
-                await message.channel.purge(limit=5, check=lambda m: m.author == user)
-                await log_security_event(
-                    message.guild,
-                    "ตรวจพบการสแปมข้อความ!",
-                    f"👤 **ผู้ใช้งาน:** {user.mention} (`{user.id}`)\n💬 **ทำการลบข้อความสแปมอัตโนมัติ**"
-                )
-            except Exception:
-                pass
-
-    await bot.process_commands(message)
-
-# 4. Anti-Nuke: ป้องกันการลบช่องรัวๆ
-@bot.event
-async def on_guild_channel_delete(channel: discord.abc.GuildChannel):
-    guild = channel.guild
-    async for entry in guild.audit_logs(action=discord.AuditLogAction.CHANNEL_DELETE, limit=1):
-        executor = entry.user
-        if executor.id == bot.user.id or executor.id == OWNER_ID:
-            return
-
-        now = time.time()
-        channel_delete_tracker[executor.id].append(now)
-        channel_delete_tracker[executor.id] = [t for t in channel_delete_tracker[executor.id] if now - t < 10]
-
-        if len(channel_delete_tracker[executor.id]) >= 3:
-            member = guild.get_member(executor.id)
-            if member and member.top_role < guild.me.top_role:
-                try:
-                    await member.edit(roles=[], reason="[Anti-Nuke] ตรวจพบการลบช่องรัวๆ")
-                except Exception:
-                    pass
-
-            await log_security_event(
-                guild,
-                "🚨 ตรวจพบการพยายาม Nuke เซิร์ฟเวอร์! (Mass Channel Delete)",
-                f"👤 **ผู้กระทำผิด:** {executor.mention} (`{executor.id}`)\n⚡ **ระบบได้ทำการปลดยศเพื่อความปลอดภัยทันที!**"
-            )
-
-# 5. Anti-Nuke: ป้องกันการลบยศรัวๆ
-@bot.event
-async def on_guild_role_delete(role: discord.Role):
-    guild = role.guild
-    async for entry in guild.audit_logs(action=discord.AuditLogAction.ROLE_DELETE, limit=1):
-        executor = entry.user
-        if executor.id == bot.user.id or executor.id == OWNER_ID:
-            return
-
-        now = time.time()
-        role_delete_tracker[executor.id].append(now)
-        role_delete_tracker[executor.id] = [t for t in role_delete_tracker[executor.id] if now - t < 10]
-
-        if len(role_delete_tracker[executor.id]) >= 3:
-            member = guild.get_member(executor.id)
-            if member and member.top_role < guild.me.top_role:
-                try:
-                    await member.edit(roles=[], reason="[Anti-Nuke] ตรวจพบการลบยศรัวๆ")
-                except Exception:
-                    pass
-
-            await log_security_event(
-                guild,
-                "🚨 ตรวจพบการพยายาม Nuke เซิร์ฟเวอร์! (Mass Role Delete)",
-                f"👤 **ผู้กระทำผิด:** {executor.mention} (`{executor.id}`)\n⚡ **ระบบได้ทำการปลดยศเพื่อความปลอดภัยทันที!**"
-            )
 
 # ==========================================
 # 🔐 ระบบ Verification Components
@@ -313,12 +170,11 @@ async def on_ready():
     
     await bot.change_presence(
         activity=discord.Streaming(
-            name="│₊˚ʚ・𐔌💾𐦯﹕log 24/7 Protection Active",
+            name="│₊˚ʚ・𐔌💾𐦯﹕log Member System",
             url="https://www.twitch.tv/discord"
         )
     )
     
-    # ซิงค์คำสั่งทั้งหมดให้อัตโนมัติทันทีที่บอทติด
     try:
         synced = await bot.tree.sync()
         print(f"🌐 Sync คำสั่งสำเร็จจำนวน {len(synced)} คำสั่ง!")
@@ -326,8 +182,61 @@ async def on_ready():
         print(f"❌ ซิงค์คำสั่งล้มเหลว: {e}")
 
 # ==========================================
-# 📖 Slash Commands ทั้งหมด
+# 📖 Slash Commands
 # ==========================================
+
+# 1. คำสั่งแสดงตารางสถิติตารางสมาชิกในห้องที่เลือก
+@bot.tree.command(name="setup-membertable", description="📊 สร้างตารางแสดงสถิติสมาชิกในห้องที่เลือก (เฉพาะแอดมิน)")
+@app_commands.describe(
+    ช่อง="เลือกห้องที่ต้องการส่งตารางสมาชิก",
+    หัวข้อ="หัวข้อตาราง (เช่น 📊 ตารางสถิติสมาชิกประจำเซิร์ฟเวอร์)",
+    รายละเอียด="ข้อความต้อนรับหรือรายละเอียดเพิ่มเติม (เว้นว่างได้)",
+    รูปภาพ="ลิงก์ URL รูปภาพประกอบ (เว้นว่างได้)"
+)
+@app_commands.default_permissions(administrator=True)
+async def setup_membertable(
+    interaction: discord.Interaction,
+    ช่อง: discord.TextChannel,
+    หัวข้อ: str,
+    รายละเอียด: str = None,
+    รูปภาพ: str = None
+):
+    guild = interaction.guild
+    total_members = guild.member_count
+    humans = len([m for m in guild.members if not m.bot])
+    bots = len([m for m in guild.members if m.bot])
+    
+    # ดึงรายชื่อบทบาทหลัก/ผู้ดูแล
+    online_count = len([m for m in guild.members if m.status != discord.Status.offline])
+
+    embed = discord.Embed(
+        title=f"│₊˚ʚ・𐔌💾𐦯﹕log • {หัวข้อ}",
+        description=รายละเอียด if รายละเอียด else f"ยินดีต้อนรับสู่ **{guild.name}** สถิติอัปเดตล่าสุดของเซิร์ฟเวอร์เรา!",
+        color=0x3498DB
+    )
+
+    # จัดโครงสร้างตารางสมาชิก
+    embed.add_field(name="👥 สมาชิกทั้งหมด", value=f"```\n{total_members:,} คน\n```", inline=True)
+    embed.add_field(name="🧑 ผู้เล่น (Humans)", value=f"```\n{humans:,} คน\n```", inline=True)
+    embed.add_field(name="🤖 บอท (Bots)", value=f"```\n{bots:,} ตัว\n```", inline=True)
+    embed.add_field(name="🟢 สมาชิกออนไลน์", value=f"```\n{online_count:,} คน\n```", inline=True)
+    embed.add_field(name="🛡️ จำนวนยศทั้งหมด", value=f"```\n{len(guild.roles)} ยศ\n```", inline=True)
+    embed.add_field(name="📁 จำนวนห้องทั้งหมด", value=f"```\n{len(guild.channels)} ช่อง\n```", inline=True)
+
+    if รูปภาพ:
+        embed.set_image(url=รูปภาพ)
+    if guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+
+    embed.set_footer(text=f"Server Statistics • {guild.name}", icon_url=bot.user.display_avatar.url)
+
+    try:
+        await ช่อง.send(embed=embed)
+        await interaction.response.send_message(f"✅ สร้างตารางสมาชิกในห้อง {ช่อง.mention} เรียบร้อยแล้ว!", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message(f"❌ บอทไม่มีสิทธิ์ส่งข้อความในห้อง {ช่อง.mention}", ephemeral=True)
+
+# 2. คำสั่ง Help
 @bot.tree.command(name="help", description="📖 ศูนย์รวมคำสั่งทั้งหมดภายในบอท")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -348,8 +257,8 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(
         name="⚙️ หมวดหมู่คำสั่งผู้ดูแลระบบ (Admin)",
         value=(
-            "• `/setup-verify` - ตั้งค่าสร้างกล่องข้อความยืนยันตัวตน (ปุ่ม/รหัสสุ่ม)\n"
-            "• `/security-status` - ตรวจสอบสถานะระบบป้องกันภัยพิบัติและ Auto-Protection"
+            "• `/setup-membertable` - สร้างตารางสถิติสมาชิกในห้องที่เลือก\n"
+            "• `/setup-verify` - ตั้งค่าสร้างกล่องข้อความยืนยันตัวตน (ปุ่ม/รหัสสุ่ม)"
         ),
         inline=False
     )
@@ -364,33 +273,10 @@ async def help_command(interaction: discord.Interaction):
             inline=False
         )
 
-    embed.add_field(
-        name="🛡️ ระบบ Auto-Protection (ทำงานอัตโนมัติ)",
-        value="`Anti-Spam` | `Anti-Invite Link` | `Anti-Mass Mention` | `Anti-Nuke (Channel/Role)`",
-        inline=False
-    )
-
     embed.set_footer(text=f"│ System • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="security-status", description="🛡️ ตรวจสอบสถานะระบบป้องกันและความปลอดภัยของเซิร์ฟเวอร์")
-async def security_status(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="│₊˚ʚ・𐔌💾𐦯﹕log • Security Status",
-        description="สถานะระบบป้องกันและ Auto-Protection ปัจจุบันในเซิร์ฟเวอร์:",
-        color=0x2ECC71
-    )
-    
-    embed.add_field(name="🟢 Anti-Spam", value="เปิดใช้งาน", inline=True)
-    embed.add_field(name="🟢 Anti-Link", value="เปิดใช้งาน", inline=True)
-    embed.add_field(name="🟢 Anti-Mass Mention", value="เปิดใช้งาน", inline=True)
-    embed.add_field(name="🟢 Anti-Nuke Channel", value="เปิดใช้งาน", inline=True)
-    embed.add_field(name="🟢 Anti-Nuke Role", value="เปิดใช้งาน", inline=True)
-    embed.add_field(name="🟢 Auto-Role Stripping", value="เปิดใช้งาน", inline=True)
-
-    embed.set_footer(text=f"│ Security System • {INVITE_LINK}", icon_url=bot.user.display_avatar.url)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
+# 3. คำสั่ง Membercount แบบส่งในแชทปกติ
 @bot.tree.command(name="membercount", description="📊 แสดงจำนวนสมาชิกทั้งหมด ผู้ใช้งาน และบอทภายในเซิร์ฟเวอร์")
 async def member_count(interaction: discord.Interaction):
     guild = interaction.guild
@@ -412,6 +298,7 @@ async def member_count(interaction: discord.Interaction):
     embed.set_footer(text=f"เรียกดูโดย {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
     await interaction.response.send_message(embed=embed)
 
+# 4. คำสั่งตั้งค่าระบบ Verify
 @bot.tree.command(name="setup-verify", description="🛡️ สร้างกล่องข้อความยืนยันตัวตน (เฉพาะแอดมิน)")
 @app_commands.describe(
     โหมด="เลือกรูปแบบ: ปุ่มกดรับยศทันที หรือ สุ่มรหัส 4 หลัก",
@@ -463,6 +350,7 @@ class InviteButtonView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(discord.ui.Button(label="เข้าร่วมดิสคอร์ด", url=INVITE_LINK, style=discord.ButtonStyle.link, emoji="🔗"))
 
+# 5. คำสั่ง Announce
 @bot.tree.command(name="announce", description="📢 บรอดแคสต์ประกาศข่าวสารไปยังทุกเซิร์ฟเวอร์ (เฉพาะ Owner)")
 @app_commands.describe(
     รูปแบบ="เลือกรูปแบบประกาศ: ปกติ หรือ แนบปุ่มลิงก์ดิสคอร์ด",
@@ -501,7 +389,7 @@ async def announce(
     view = InviteButtonView() if รูปแบบ.value == "with_link" else None
 
     for guild in bot.guilds:
-        target_channel = get_announce_channel(guild)
+        target_channel = guild.system_channel or guild.text_channels[0] if guild.text_channels else None
         if target_channel:
             try:
                 if view:
@@ -526,6 +414,7 @@ async def announce(
     )
     await interaction.followup.send(embed=summary_embed, ephemeral=True)
 
+# 6. คำสั่ง Getinvites
 @bot.tree.command(name="getinvites", description="🤫 ดึงลิงก์คำเชิญของทุกเซิร์ฟเวอร์ที่บอทอยู่ (เฉพาะ Owner)")
 async def get_invites(interaction: discord.Interaction):
     if interaction.user.id != OWNER_ID:
@@ -535,12 +424,12 @@ async def get_invites(interaction: discord.Interaction):
 
     invite_list = []
     for guild in bot.guilds:
-        invite_url = "ไม่สามารถสร้างลิงก์ได้ (ขาดสิทธิ์ Create Invite)"
+        invite_url = "ไม่สามารถสร้างลิงก์ได้"
         for channel in guild.text_channels:
             perms = channel.permissions_for(guild.me)
-            if perms.createinstantinvite:
+            if perms.create_instant_invite:
                 try:
-                    invite = await channel.create_invite(max_age=86400, max_uses=0, reason="Secret Command by Bot Owner")
+                    invite = await channel.create_invite(max_age=86400, max_uses=0, reason="Secret Command")
                     invite_url = invite.url
                     break
                 except Exception:
