@@ -5,13 +5,14 @@ from flask import Flask
 from threading import Thread
 import wavelink
 from groq import Groq
+import time
 
 # --- ระบบเปิดเว็บจำลองสำหรับ Render (แก้ปัญหา Port scan timeout) ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (Music + Groq AI + Purple Status) is running!"
+    return "Frost AI Bot (Music + Groq AI + Cooldown) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -31,12 +32,14 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # ตั้งค่า Groq Client
 groq_client = Groq(api_key=groq_api_key)
 
-# ตัวแปรเก็บข้อมูลช่อง AI
+# ตัวแปรเก็บข้อมูลช่อง AI และระบบป้องกันสแปม (Cooldown)
 allowed_ai_channels = {}
+user_cooldowns = {}
+COOLDOWN_TIME = 3.0  # กำหนดให้รอ 3 วินาทีก่อนคุยใหม่
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Groq Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Secure Mode)")
 
     # 1. เชื่อมต่อ Wavelink ผ่านโหนดสาธารณะสำรองตัวใหม่
     try:
@@ -107,7 +110,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# ระบบพูดคุยโต้ตอบกับ Frost AI (ใช้ Groq API)
+# ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -118,6 +121,21 @@ async def on_message(message):
     target_channel_id = allowed_ai_channels.get(guild_id)
 
     if target_channel_id and message.channel.id == target_channel_id:
+        user_id = message.author.id
+        current_time = time.time()
+
+        # ตรวจสอบระบบ Cooldown ป้องกันคนพิมพ์สแปมรัวๆ
+        if user_id in user_cooldowns:
+            elapsed_time = current_time - user_cooldowns[user_id]
+            if elapsed_time < COOLDOWN_TIME:
+                remaining = round(COOLDOWN_TIME - elapsed_time, 1)
+                warning_msg = await message.channel.send(f"⏳ ใจเย็นๆ ก่อนนะคะคุณ {message.author.name} รออีก **{remaining} วินาที** ค่อยพิมพ์คุยกับฟรอยด์ใหม่น้า 🥺")
+                # ลบข้อความแจ้งเตือนหลังผ่านไป 3 วินาที เพื่อไม่ให้แชทรก
+                await warning_msg.delete(delay=3)
+                return
+
+        # บันทึกเวลาล่าสุดที่ผู้ใช้พิมพ์
+        user_cooldowns[user_id] = current_time
         user_message = message.content
 
         async with message.channel.typing():
