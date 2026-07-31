@@ -38,9 +38,9 @@ allowed_ai_channels = {}
 async def on_ready():
     print(f"Logged in as {bot.user.name} (Frost AI - Multi-feature Mode)")
 
-    # 1. เชื่อมต่อ Wavelink สำหรับเปิดเพลง (ใส่ Host และ Password ของ Lavalink Server ของคุณตรงนี้)
+    # 1. เชื่อมต่อ Wavelink ผ่านโฮสต์สาธารณะฟรี (ไม่ต้องลง Java)
     try:
-        node = wavelink.Node(uri='YOUR_LAVALINK_HOST:PORT', password='YOUR_LAVALINK_PASSWORD')
+        node = wavelink.Node(uri='https://lavalink.darrennathanael.com', password='youshallnotpass')
         await wavelink.Pool.connect(nodes=[node], client=bot)
         print("✅ เชื่อมต่อ Lavalink สำเร็จแล้วค่ะ!")
     except Exception as e:
@@ -85,7 +85,7 @@ async def stop(interaction: nextcord.Interaction):
         await player.disconnect()
         await interaction.send("⏹️ หยุดเพลงและออกจากห้องเสียงให้เรียบร้อยแล้วค่ะ บายๆ น้า 👋")
     else:
-        await interaction.send("❌ ตอนนี้บไม่ได้อยู่ในห้องเสียงเลยนะคะ", ephemeral=True)
+        await interaction.send("❌ ตอนนี้บอทไม่ได้อยู่ในห้องเสียงเลยนะคะ", ephemeral=True)
 
 
 # ==========================================
