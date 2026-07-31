@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (Search Grounding + Music + AI) is running!"
+    return "Frost AI Bot (Music + AI + Purple Status) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -36,7 +36,7 @@ allowed_ai_channels = {}
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Advanced Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Multi-feature Mode)")
 
     # 1. เชื่อมต่อ Wavelink ผ่านโฮสต์สาธารณะฟรีตัวสำรอง
     try:
@@ -47,7 +47,7 @@ async def on_ready():
         print(f"⚠️ เชื่อมต่อ Lavalink ไม่สำเร็จ: {e}")
 
     # 2. ตั้งค่าสถานะเม็ดม่วง (Streaming)
-    streaming_message = "กำลังค้นหาข้อมูลและเปิดเพลงให้ทุกคนนะค้า 🎶🌸"
+    streaming_message = "กำลังเปิดเพลงและคุยกับทุกคนนะค้า 🎶🌸"
     twitch_url = "https://www.twitch.tv/monstercat"
     activity = nextcord.Streaming(name=streaming_message, url=twitch_url)
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
@@ -107,7 +107,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# ระบบพูดคุยโต้ตอบกับ Frost AI (เปิดระบบค้นหาข้อมูล Google Search + ตอบยาวสะใจ)
+# ระบบพูดคุยโต้ตอบกับ Frost AI (ตอบเร็วและยาวเต็มอิ่ม)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -125,24 +125,18 @@ async def on_message(message):
                 system_instruction = (
                     "คุณคือ 'Frost AI' ผู้ช่วยสาวสวยสุดน่ารัก เป็นกันเอง พูดจาไพเราะ มีหางเสียงค่ะ/คะ "
                     "ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ "
-                    "หากผู้ใช้ถามข้อมูล ข่าวสาร ความรู้ หรือเรื่องราวต่างๆ ให้ทำการค้นหาข้อมูลที่ถูกต้องแม่นยำมาตอบ "
-                    "และสามารถอธิบายเนื้อหาได้อย่างละเอียด ครบถ้วน จัดเต็ม และยาวได้ตามความเหมาะสมเพื่อให้ผู้ใช้ได้ข้อมูลที่คุ้มค่าที่สุด"
+                    "สามารถอธิบายเนื้อหาได้อย่างละเอียด ครบถ้วน และจัดเต็มตามที่ผู้ใช้ต้องการ"
                 )
                 
-                # เปิดใช้งาน tools=[{"type": "google_search"}] เพื่อให้ AI ค้นหาข้อมูลจากเว็บได้
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=f"{system_instruction}\n\nผู้ใช้ชื่อ {message.author.name} ถามว่า: {user_message}",
-                    config={
-                        'tools': [{'type': 'google_search'}],
-                        'temperature': 0.7,
-                    }
+                    contents=f"{system_instruction}\n\nผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
                 )
                 ai_reply = response.text
             except Exception as e:
-                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้ฟรอยด์เชื่อมต่อระบบค้นหาข้อมูลและสมองกล AI ไม่สำเร็จค่ะ 🥺 (รายละเอียด: {e})"
+                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้ฟรอยด์เชื่อมต่อสมองกล AI ไม่สำเร็จค่ะ 🥺"
 
-        # หากข้อความยาวเกินขีดจำกัดของ Discord (2000 ตัวอักษร) ให้ทำการตัดแบ่งส่ง
+        # แบ่งส่งข้อความหากยาวเกินขีดจำกัดของ Discord (2000 ตัวอักษร)
         if len(ai_reply) > 2000:
             for i in range(0, len(ai_reply), 2000):
                 await message.channel.send(ai_reply[i:i+2000])
