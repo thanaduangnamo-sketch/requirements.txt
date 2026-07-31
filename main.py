@@ -1,56 +1,22 @@
-import subprocess
-import sys
-
-def install_modules():
-    modules = ["nextcord", "requests"]
-    for module in modules:
-        try:
-            __import__(module)
-        except ImportError:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", module])
-
-install_modules()
-
 import nextcord
 from nextcord.ext import commands
 import requests
-import time
 import os
 
-# ================= โครงสร้างการตั้งค่าบอท =================
-token = "TOKEN"
-ownerid = [1532607357962420229] # ไอดีเจ้าของบอท
-
+token = os.environ.get("DISCORD_TOKEN")
+ownerid = [1532607357962420229]
 image = "https://cdn.discordapp.com/attachments/1355010685108490410/1355532067768766515/ed40c25e-1eaf-4cc0-b8b0-5198d79dae76.png"
 
 bot = commands.Bot(command_prefix="!", intents=nextcord.Intents.all())
 
-class Colors:
-    OKCYAN = '\033[96m'
-    ENDC = '\033[0m'
-
 @bot.event
 async def on_ready():
-    os.system('cls' if os.name == 'nt' else 'clear')
-    current_time = time.strftime("%Y-%m-%d %H:%M:%S")
-
-    print(Colors.OKCYAN + f"""
-╔════════════════════════════════════════════════════╗
-║         TOKEN CHECKER BOT (DM Mode)                ║
-╠════════════════════════════════════════════════════╣
-║  ชื่อบอท        : {bot.user.name:<35}║
-║  ไอดีบอท        : {bot.user.id:<35}║
-║  เวลา            : {current_time:<35}║
-╚════════════════════════════════════════════════════╝
-""" + Colors.ENDC)
+    print(f"Logged in as {bot.user.name}")
     bot.add_view(TokenCheckView())
-
-# ================= โมเดลกรอก Token =================
 
 class TokenModal(nextcord.ui.Modal):
     def __init__(self):
         super().__init__(title="🔐 ตรวจสอบ Discord Token")
-
         self.token_input = nextcord.ui.TextInput(
             label="กรอก Discord Token ของคุณ",
             placeholder="วาง Token ที่นี่ (ข้อมูลไม่ถูกบันทึก)",
@@ -63,10 +29,6 @@ class TokenModal(nextcord.ui.Modal):
         await interaction.response.defer(ephemeral=True)
         raw_token = str(self.token_input.value).strip()
 
-        # ตรวจสอบว่าเป็น Bot หรือ User Token
-        is_bot = raw_token.startswith("Bot ") or raw_token.startswith("mfa.") == False and len(raw_token) > 60 and not "." in raw_token[:20]
-        
-        # ตั้งค่า Header ตามประเภท Token
         headers = {
             "Authorization": raw_token if not raw_token.lower().startswith("bot ") else raw_token,
             "Content-Type": "application/json",
@@ -74,7 +36,6 @@ class TokenModal(nextcord.ui.Modal):
         }
 
         try:
-            # ดึงข้อมูลผู้ใช้จาก Discord API
             response = requests.get("https://discord.com/api/v9/users/@me", headers=headers, timeout=10)
 
             if response.status_code != 200:
@@ -96,7 +57,6 @@ class TokenModal(nextcord.ui.Modal):
             phone = data.get('phone', 'ไม่พบข้อมูล')
             mfa = "เปิดใช้งาน ✅" if data.get('mfa_enabled') else "ปิดใช้งาน ❌"
             
-            # ตรวจสอบสถานะ Nitro
             nitro_type = "ไม่มี Nitro ❌"
             premium_type = data.get('premium_type', 0)
             if premium_type == 1:
@@ -106,7 +66,6 @@ class TokenModal(nextcord.ui.Modal):
             elif premium_type == 3:
                 nitro_type = "Nitro Basic 🌟"
 
-            # สร้าง Embed ผลลัพธ์สำหรับส่งเข้า DM
             dm_embed = nextcord.Embed(
                 title="**🛡️ ผลการตรวจสอบ Token (ส่วนตัว)**",
                 description="ระบบได้ทำการตรวจสอบข้อมูลเบื้องต้นเรียบร้อยแล้ว",
@@ -127,7 +86,6 @@ class TokenModal(nextcord.ui.Modal):
                 ext = "gif" if is_animated else "png"
                 dm_embed.set_thumbnail(url=f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.{ext}?size=256")
 
-            # พยายามส่งข้อมูลเข้า DM ของผู้ใช้
             try:
                 await interaction.user.send(embed=dm_embed)
                 await interaction.followup.send(
@@ -155,8 +113,6 @@ class TokenModal(nextcord.ui.Modal):
                 ephemeral=True
             )
 
-# ================= ปุ่มกดเรียก Modal =================
-
 class TokenCheckView(nextcord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -164,8 +120,6 @@ class TokenCheckView(nextcord.ui.View):
     @nextcord.ui.button(label="เช็ค Token", style=nextcord.ButtonStyle.red, custom_id="check_token_btn", emoji="🔍")
     async def check_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.send_modal(TokenModal())
-
-# ================= คำสั่ง Setup บอท =================
 
 @bot.slash_command(name="setup-token-checker", description="🤖 ติดตั้งระบบ Token Checker")
 async def setup(interaction: nextcord.Interaction):
@@ -191,5 +145,4 @@ async def setup(interaction: nextcord.Interaction):
     else:
         await interaction.response.send_message("### ❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
 
-# เริ่มรันบอท
 bot.run(token)
