@@ -2,6 +2,23 @@ import nextcord
 from nextcord.ext import commands
 import requests
 import os
+from flask import Flask
+from threading import Thread
+
+# --- ระบบเปิดเว็บจำลองสำหรับ Render (แก้ปัญหา Port scan timeout) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+# -----------------------------------------------------------------
 
 token = os.environ.get("DISCORD_TOKEN")
 ownerid = [1532607357962420229]
@@ -110,7 +127,7 @@ class TokenModal(nextcord.ui.Modal):
                     description=f"### ❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: `{e}`",
                     color=nextcord.Color.red()
                 ),
-                ephemeral=True
+                    ephemeral=True
             )
 
 class TokenCheckView(nextcord.ui.View):
@@ -145,4 +162,6 @@ async def setup(interaction: nextcord.Interaction):
     else:
         await interaction.response.send_message("### ❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
 
+# เริ่มรันระบบเว็บจำลองควบคู่ไปกับบอท
+keep_alive()
 bot.run(token)
