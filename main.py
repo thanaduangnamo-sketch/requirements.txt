@@ -33,7 +33,6 @@ anti_mention_status = {}
 anti_spam_status = {}
 anti_nuke_status = {}
 
-# ตัวแปรเก็บข้อมูลนับสถิติเพื่อลงโทษ (Anti-Spam / Anti-Mass Ping)
 user_message_counts = defaultdict(list)
 user_everyone_counts = defaultdict(list)
 
@@ -45,13 +44,12 @@ async def on_ready():
 
 
 # ==========================================
-# ฟังก์ชันลงโทษขั้นเด็ดขาด (แบน + ยึด/ลบยศออกทั้งหมด)
+# ฟังก์ชันลงโทษขั้นเด็ดขาด (แบน + ยึด/ลบยศ)
 # ==========================================
 async def punish_user(member: nextcord.member.Member, reason: str):
     if member.bot or member.id in ownerid:
         return
     try:
-        # 1. ยึด/ถอดยศทั้งหมดออก (รวมถึงสิทธิ์แอดมิน)
         roles_to_remove = [r for r in member.roles if r != member.guild.default_role and r.is_assignable()]
         if roles_to_remove:
             await member.remove_roles(*roles_to_remove, reason=f"Anti-Security: {reason}")
@@ -59,14 +57,13 @@ async def punish_user(member: nextcord.member.Member, reason: str):
         pass
 
     try:
-        # 2. แบนออกจากเซิร์ฟเวอร์ทันที
         await member.ban(reason=f"Anti-Security Protection: {reason}")
     except Exception:
         pass
 
 
 # ==========================================
-# 1. ระบบป้องกันเซิร์ฟเวอร์อัจฉริยะ (Advanced Protection)
+# 1. ระบบป้องกันเซิร์ฟเวอร์อัจฉริยะ
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -76,7 +73,6 @@ async def on_message(message):
     guild_id = message.guild.id
     current_time = time.time()
     author = message.author
-
     is_admin = author.guild_permissions.administrator
 
     # 1. กันลิงก์
@@ -89,19 +85,15 @@ async def on_message(message):
             except Exception:
                 pass
 
-    # 2. ระบบกันแท็กทุกคน / แท็กซ้ำหลายครั้ง (แบน + ยึดยศ)
+    # 2. กันแท็กซ้ำ / แท็กทุกคน
     if anti_mention_status.get(guild_id, False) and not is_admin:
         has_everyone = message.mention_everyone or "@everyone" in message.content or "@here" in message.content
-        
         if has_everyone:
             user_everyone_counts[author.id] = [t for t in user_everyone_counts[author.id] if current_time - t < 10]
             user_everyone_counts[author.id].append(current_time)
-
             if len(user_everyone_counts[author.id]) >= 2:
-                try:
-                    await message.delete()
-                except:
-                    pass
+                try: await message.delete()
+                except: pass
                 await punish_user(author, "Mass Everyone Ping Spam")
                 return
 
@@ -113,17 +105,14 @@ async def on_message(message):
             except Exception:
                 pass
 
-    # 3. ระบบกันสแปม (สแปมรัวๆ แบน + ยึดยศ)
+    # 3. กันสแปม
     if anti_spam_status.get(guild_id, False) and not is_admin:
         author_id = author.id
         user_message_counts[author_id] = [t for t in user_message_counts[author_id] if current_time - t < 5]
         user_message_counts[author_id].append(current_time)
-
         if len(user_message_counts[author_id]) > 6:
-            try:
-                await message.delete()
-            except:
-                pass
+            try: await message.delete()
+            except: pass
             await punish_user(author, "Message Spam Flood")
             return
 
@@ -131,7 +120,7 @@ async def on_message(message):
 
 
 # ==========================================
-# 2. ระบบกันยิงดิส / กันลบห้อง / กันลบยศรัวๆ (Anti-Nuke)
+# 2. ระบบกันยิงดิส (Anti-Nuke)
 # ==========================================
 @bot.event
 async def on_guild_channel_delete(channel):
@@ -158,7 +147,7 @@ async def on_guild_role_delete(role):
 
 
 # ==========================================
-# 3. ระบบปุ่มยืนยันตัวตน และ เลือกยศ
+# 3. ระบบปุ่มยืนยันตัวตน และ เลือกยศ (แก้บัคแอปไม่ตอบสนอง)
 # ==========================================
 
 class VerifyModal(nextcord.ui.Modal):
@@ -169,19 +158,22 @@ class VerifyModal(nextcord.ui.Modal):
         self.add_item(self.code_input)
 
     async def callback(self, interaction: nextcord.Interaction):
+        # ป้องกันแอปค้างด้วยการตอบรับล่วงหน้า
+        await interaction.response.defer(ephemeral=True)
         if str(self.code_input.value).strip() == self.correct_code:
             role_id = 000000000000000000  # <-- เปลี่ยน ID ยศสมาชิก
             role = interaction.guild.get_role(role_id)
             if role:
                 try: await interaction.user.add_roles(role)
                 except: pass
-            await interaction.response.send_message(embed=nextcord.Embed(description="### ✅ ยืนยันสำเร็จ!", color=nextcord.Color.green()), ephemeral=True)
+            await interaction.followup.send(embed=nextcord.Embed(description="### ✅ ยืนยันสำเร็จ!", color=nextcord.Color.green()), ephemeral=True)
         else:
-            await interaction.response.send_message(embed=nextcord.Embed(description="### ❌ รหัสไม่ถูกต้อง!", color=nextcord.Color.red()), ephemeral=True)
+            await interaction.followup.send(embed=nextcord.Embed(description="### ❌ รหัสไม่ถูกต้อง!", color=nextcord.Color.red()), ephemeral=True)
 
 class VerifyView(nextcord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+
     @nextcord.ui.button(label="คลิกเพื่อยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button_main", emoji="✅")
     async def verify_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.send_modal(VerifyModal(correct_code=str(random.randint(1000, 9999))))
@@ -195,14 +187,18 @@ class RoleSelectDropdown(nextcord.ui.Select):
         super().__init__(placeholder="📌 เลือกยศ...", min_values=1, max_values=1, options=options)
 
     async def callback(self, interaction: nextcord.Interaction):
+        # ป้องกันแอปค้างด้วยการ defer
+        await interaction.response.defer(ephemeral=True)
         role = interaction.guild.get_role(int(self.values[0]))
-        if not role: return await interaction.response.send_message("❌ ไม่พบยศ", ephemeral=True)
+        if not role: 
+            return await interaction.followup.send("❌ ไม่พบยศในระบบ กรุณาตรวจสอบ ID ยศ", ephemeral=True)
+        
         if role in interaction.user.roles:
             await interaction.user.remove_roles(role)
-            await interaction.response.send_message(f"🗑️ ถอดยศ `{role.name}` แล้ว", ephemeral=True)
+            await interaction.followup.send(f"🗑️ ถอดยศ `{role.name}` แล้ว", ephemeral=True)
         else:
             await interaction.user.add_roles(role)
-            await interaction.response.send_message(f"✨ เพิ่มยศ `{role.name}` แล้ว", ephemeral=True)
+            await interaction.followup.send(f"✨ เพิ่มยศ `{role.name}` แล้ว", ephemeral=True)
 
 class RoleSelectView(nextcord.ui.View):
     def __init__(self):
@@ -218,15 +214,16 @@ def security_embed(title, status_type, desc):
     color = nextcord.Color.blurple() if status_type == "on" else nextcord.Color.dark_gray()
     state = "เปิดใช้งาน" if status_type == "on" else "ปิดการใช้งาน"
     embed = nextcord.Embed(title=f"🔒 {title}", description=f"**สถานะ:** `{state}`\n\n{desc}", color=color)
-    embed.set_footer(text="• ระบบรักษาความปลอดภัยอัตโนมัติ (Anti-Nuke / Anti-Spam / Ban & Strip)")
+    embed.set_footer(text="• ระบบรักษาความปลอดภัยอัตโนมัติ")
     return embed
 
 @bot.slash_command(name="help", description="📖 แสดงคู่มือการใช้งานคำสั่งทั้งหมด")
 async def help_command(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     embed = nextcord.Embed(title="🤖 BOT COMMANDS PANEL", description="รายการคำสั่งทั้งหมดในระบบ:", color=nextcord.Color.gold())
-    embed.add_field(name="🛡️ ระบบป้องกันความปลอดภัย (Auto-Ban & Strip Roles)", value="`/anti-link` | `/anti-mention` | `/anti-spam` | `/anti-nuke`", inline=False)
+    embed.add_field(name="🛡️ ระบบป้องกันความปลอดภัย", value="`/anti-link` | `/anti-mention` | `/anti-spam` | `/anti-nuke`", inline=False)
     embed.add_field(name="⚙️ ระบบติดตั้งปุ่มและเมนู", value="`/setup-verify` | `/setup-roles`", inline=False)
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 @bot.slash_command(name="anti-link", description="[ 🎃 ระบบกันลิ้ง ]")
 async def anti_link(interaction: nextcord.Interaction, status: str = nextcord.SlashOption(choices={"เปิด": "on", "ปิด": "off"})):
@@ -234,19 +231,19 @@ async def anti_link(interaction: nextcord.Interaction, status: str = nextcord.Sl
     anti_link_status[interaction.guild.id] = (status == "on")
     await interaction.response.send_message(embed=security_embed("ANTI-LINK", status, "บล็อกและลบลิงก์อัตโนมัติ"), ephemeral=True)
 
-@bot.slash_command(name="anti-mention", description="[ 🎃 ระบบกันแท็ก ] (แท็กทุกคนรัวๆ แบน+ยึดยศ)")
+@bot.slash_command(name="anti-mention", description="[ 🎃 ระบบกันแท็ก ]")
 async def anti_mention(interaction: nextcord.Interaction, status: str = nextcord.SlashOption(choices={"เปิด": "on", "ปิด": "off"})):
     if not interaction.user.guild_permissions.administrator: return await interaction.response.send_message("❌ เฉพาะแอดมิน", ephemeral=True)
     anti_mention_status[interaction.guild.id] = (status == "on")
     await interaction.response.send_message(embed=security_embed("ANTI-MENTION / @EVERYONE", status, "ตรวจจับการแท็กทุกคนซ้ำๆ ทำการแบนและยึดยศทันที"), ephemeral=True)
 
-@bot.slash_command(name="anti-spam", description="[ 🎃 ระบบกันสแปม ] (สแปมข้อความ แบน+ยึดยศ)")
+@bot.slash_command(name="anti-spam", description="[ 🎃 ระบบกันสแปม ]")
 async def anti_spam(interaction: nextcord.Interaction, status: str = nextcord.SlashOption(choices={"เปิด": "on", "ปิด": "off"})):
     if not interaction.user.guild_permissions.administrator: return await interaction.response.send_message("❌ เฉพาะแอดมิน", ephemeral=True)
     anti_spam_status[interaction.guild.id] = (status == "on")
     await interaction.response.send_message(embed=security_embed("ANTI-SPAM", status, "จำกัดความเร็วข้อความ สแปมโดนแบนและยึดยศทันที"), ephemeral=True)
 
-@bot.slash_command(name="anti-nuke", description="[ 🎃 ระบบกันยิงดิส ] (ลบห้อง/ลบยศ แบน+ยึดแอดมิน)")
+@bot.slash_command(name="anti-nuke", description="[ 🎃 ระบบกันยิงดิส ]")
 async def anti_nuke(interaction: nextcord.Interaction, status: str = nextcord.SlashOption(choices={"เปิด": "on", "ปิด": "off"})):
     if not interaction.user.guild_permissions.administrator: return await interaction.response.send_message("❌ เฉพาะแอดมิน", ephemeral=True)
     anti_nuke_status[interaction.guild.id] = (status == "on")
