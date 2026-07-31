@@ -107,7 +107,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# ระบบพูดคุยโต้ตอบกับ Frost AI (สไตล์ผู้หญิง)
+# ระบบพูดคุยโต้ตอบกับ Frost AI (ปรับรุ่นโมเดลและลดขั้นตอนให้ตอบเร็วขึ้น)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -122,14 +122,10 @@ async def on_message(message):
 
         async with message.channel.typing():
             try:
-                system_instruction = (
-                    "คุณคือ 'Frost AI' ผู้ช่วยสาวสวยสุดน่ารัก เป็นกันเอง พูดจาไพเราะ มีหางเสียงค่ะ/คะ "
-                    "ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ"
-                )
-                
+                # ใช้รุ่น gemini-2.5-flash ที่ประมวลผลไว และใส่คำสั่งแบบกระชับเพื่อความเร็วสูงสุด
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=f"{system_instruction}\n\nผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
+                    contents=f"คุณคือ Frost AI ผู้ช่วยสาวสวยสุดน่ารัก พูดจาไพเราะ มีหางเสียงค่ะ/คะ ตอบคำถามนี้ให้เป็นกันเอง: {user_message}"
                 )
                 ai_reply = response.text
             except Exception as e:
