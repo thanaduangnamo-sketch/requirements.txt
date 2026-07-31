@@ -38,9 +38,9 @@ allowed_ai_channels = {}
 async def on_ready():
     print(f"Logged in as {bot.user.name} (Frost AI - Multi-feature Mode)")
 
-    # 1. เชื่อมต่อ Wavelink ผ่านโฮสต์สาธารณะฟรี (ไม่ต้องลง Java)
+    # 1. เชื่อมต่อ Wavelink ผ่านโฮสต์สาธารณะฟรีตัวสำรอง
     try:
-        node = wavelink.Node(uri='https://lavalink.darrennathanael.com', password='youshallnotpass')
+        node = wavelink.Node(uri='https://lavalink.astu.dev', password='youshallnotpass')
         await wavelink.Pool.connect(nodes=[node], client=bot)
         print("✅ เชื่อมต่อ Lavalink สำเร็จแล้วค่ะ!")
     except Exception as e:
