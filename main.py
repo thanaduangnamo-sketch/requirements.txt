@@ -127,7 +127,7 @@ class TokenModal(nextcord.ui.Modal):
                     description=f"### ❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: `{e}`",
                     color=nextcord.Color.red()
                 ),
-                    ephemeral=True
+                ephemeral=True
             )
 
 class TokenCheckView(nextcord.ui.View):
@@ -162,6 +162,6 @@ async def setup(interaction: nextcord.Interaction):
     else:
         await interaction.response.send_message("### ❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
 
-# เริ่มรันระบบเว็บจำลองควบคู่ไปกับบอท
+# รันระบบเปิดเว็บควบคู่กับบอท
 keep_alive()
 bot.run(token)
