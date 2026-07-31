@@ -2,3 +2,4 @@ nextcord
 Flask
 google-genai
 wavelink
+groq
