@@ -1,6 +1,5 @@
 import nextcord
 from nextcord.ext import commands
-import requests
 import os
 from flask import Flask
 from threading import Thread
@@ -25,7 +24,6 @@ def keep_alive():
 
 token = os.environ.get("DISCORD_TOKEN")
 ownerid = [1532607357962420229]
-image = "https://cdn.discordapp.com/attachments/1355010685108490410/1355532067768766515/ed40c25e-1eaf-4cc0-b8b0-5198d79dae76.png"
 
 bot = commands.Bot(command_prefix="!", intents=nextcord.Intents.all())
 
@@ -42,7 +40,6 @@ user_everyone_counts = defaultdict(list)
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user.name}")
-    bot.add_view(TokenCheckView())
     bot.add_view(VerifyView())
     bot.add_view(RoleSelectView())
 
@@ -54,7 +51,7 @@ async def punish_user(member: nextcord.member.Member, reason: str):
     if member.bot or member.id in ownerid:
         return
     try:
-        # 1. ยึด/ถอดยศทั้งหมดออก
+        # 1. ยึด/ถอดยศทั้งหมดออก (รวมถึงสิทธิ์แอดมิน)
         roles_to_remove = [r for r in member.roles if r != member.guild.default_role and r.is_assignable()]
         if roles_to_remove:
             await member.remove_roles(*roles_to_remove, reason=f"Anti-Security: {reason}")
@@ -80,7 +77,6 @@ async def on_message(message):
     current_time = time.time()
     author = message.author
 
-    # เช็คสิทธิ์ข้ามแอดมินหลัก (แต่ถ้าทำผิดกฏหนักๆ ด้านล่างจะจัดการหมด)
     is_admin = author.guild_permissions.administrator
 
     # 1. กันลิงก์
@@ -95,14 +91,12 @@ async def on_message(message):
 
     # 2. ระบบกันแท็กทุกคน / แท็กซ้ำหลายครั้ง (แบน + ยึดยศ)
     if anti_mention_status.get(guild_id, False) and not is_admin:
-        # ตรวจสอบการแท็ก @everyone หรือ @here หรือแท็กยศ/คนรัวๆ
         has_everyone = message.mention_everyone or "@everyone" in message.content or "@here" in message.content
         
         if has_everyone:
             user_everyone_counts[author.id] = [t for t in user_everyone_counts[author.id] if current_time - t < 10]
             user_everyone_counts[author.id].append(current_time)
 
-            # ถ้าแท็กทุกคนเกิน 2 ครั้งใน 10 วิ -> จัดการขั้นเด็ดขาด
             if len(user_everyone_counts[author.id]) >= 2:
                 try:
                     await message.delete()
@@ -125,7 +119,7 @@ async def on_message(message):
         user_message_counts[author_id] = [t for t in user_message_counts[author_id] if current_time - t < 5]
         user_message_counts[author_id].append(current_time)
 
-        if len(user_message_counts[author_id]) > 6: # ส่งเกิน 6 ข้อความใน 5 วิ
+        if len(user_message_counts[author_id]) > 6:
             try:
                 await message.delete()
             except:
@@ -144,9 +138,7 @@ async def on_guild_channel_delete(channel):
     guild_id = channel.guild.id
     if anti_nuke_status.get(guild_id, False):
         try:
-            # สร้างห้องคืนอัตโนมัติ
-            new_ch = await channel.guild.create_text_channel(name=channel.name, category=channel.category)
-            # พยายามหาคนที่ลบห้องผ่าน Audit Logs เพื่อแบนและยึดสิทธิ์
+            await channel.guild.create_text_channel(name=channel.name, category=channel.category)
             async for entry in channel.guild.audit_logs(limit=1, action=nextcord.AuditLogAction.channel_delete):
                 if entry.user and not entry.user.bot:
                     await punish_user(entry.user, "Nuke: Deleted Channels")
@@ -166,45 +158,8 @@ async def on_guild_role_delete(role):
 
 
 # ==========================================
-# 3. ระบบปุ่มเดิมทั้งหมด (Token, Verify, Roles)
+# 3. ระบบปุ่มยืนยันตัวตน และ เลือกยศ
 # ==========================================
-
-class TokenModal(nextcord.ui.Modal):
-    def __init__(self):
-        super().__init__(title="🔐 ตรวจสอบ Discord Token")
-        self.token_input = nextcord.ui.TextInput(
-            label="กรอก Discord Token ของคุณ",
-            placeholder="วาง Token ที่นี่ (ข้อมูลไม่ถูกบันทึก)",
-            style=nextcord.TextInputStyle.paragraph,
-            required=True
-        )
-        self.add_item(self.token_input)
-
-    async def callback(self, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        raw_token = str(self.token_input.value).strip()
-        headers = {"Authorization": raw_token if not raw_token.lower().startswith("bot ") else raw_token, "Content-Type": "application/json"}
-
-        try:
-            response = requests.get("https://discord.com/api/v9/users/@me", headers=headers, timeout=10)
-            if response.status_code != 200:
-                return await interaction.followup.send(embed=nextcord.Embed(description="### ❌ Tokenไม่ถูกต้อง", color=nextcord.Color.red()), ephemeral=True)
-
-            data = response.json()
-            dm_embed = nextcord.Embed(title="**🛡️ ผลการตรวจสอบ Token**", color=nextcord.Color.blurple())
-            dm_embed.add_field(name="👤 ชื่อ", value=f"`{data.get('username')}`", inline=True)
-            dm_embed.add_field(name="🆔 ไอดี", value=f"`{data.get('id')}`", inline=True)
-            await interaction.user.send(embed=dm_embed)
-            await interaction.followup.send(embed=nextcord.Embed(description="### ✅ ส่งผลลัพธ์ไปที่ DM แล้ว", color=nextcord.Color.green()), ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(embed=nextcord.Embed(description=f"### ❌ ผิดพลาด: `{e}`", color=nextcord.Color.red()), ephemeral=True)
-
-class TokenCheckView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-    @nextcord.ui.button(label="เช็ค Token", style=nextcord.ButtonStyle.red, custom_id="check_token_btn", emoji="🔍")
-    async def check_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.send_modal(TokenModal())
 
 class VerifyModal(nextcord.ui.Modal):
     def __init__(self, correct_code: str):
@@ -270,7 +225,7 @@ def security_embed(title, status_type, desc):
 async def help_command(interaction: nextcord.Interaction):
     embed = nextcord.Embed(title="🤖 BOT COMMANDS PANEL", description="รายการคำสั่งทั้งหมดในระบบ:", color=nextcord.Color.gold())
     embed.add_field(name="🛡️ ระบบป้องกันความปลอดภัย (Auto-Ban & Strip Roles)", value="`/anti-link` | `/anti-mention` | `/anti-spam` | `/anti-nuke`", inline=False)
-    embed.add_field(name="⚙️ ระบบติดตั้งปุ่ม", value="`/setup-token-checker` | `/setup-verify` | `/setup-roles`", inline=False)
+    embed.add_field(name="⚙️ ระบบติดตั้งปุ่มและเมนู", value="`/setup-verify` | `/setup-roles`", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.slash_command(name="anti-link", description="[ 🎃 ระบบกันลิ้ง ]")
@@ -296,14 +251,6 @@ async def anti_nuke(interaction: nextcord.Interaction, status: str = nextcord.Sl
     if not interaction.user.guild_permissions.administrator: return await interaction.response.send_message("❌ เฉพาะแอดมิน", ephemeral=True)
     anti_nuke_status[interaction.guild.id] = (status == "on")
     await interaction.response.send_message(embed=security_embed("ANTI-NUKE SYSTEM", status, "ป้องกันการทำลายเซิร์ฟเวอร์ ลบห้องหรือลบยศจะถูกแบนและยึดสิทธิ์ทันที"), ephemeral=True)
-
-@bot.slash_command(name="setup-token-checker", description="🤖 ติดตั้งปุ่ม Token Checker")
-async def setup_token(interaction: nextcord.Interaction):
-    if not interaction.user.guild_permissions.administrator: return await interaction.response.send_message("❌ ไม่มีสิทธิ์", ephemeral=True)
-    embed = nextcord.Embed(title="**TOKEN CHECKER**", color=nextcord.Color.red())
-    embed.set_image(url=image)
-    await interaction.channel.send(embed=embed, view=TokenCheckView())
-    await interaction.response.send_message("✅ สำเร็จ", ephemeral=True)
 
 @bot.slash_command(name="setup-verify", description="🛡️ ติดตั้งปุ่มยืนยันตัวตน")
 async def setup_verify(interaction: nextcord.Interaction):
