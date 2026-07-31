@@ -31,9 +31,66 @@ bot = commands.Bot(command_prefix="!", intents=nextcord.Intents.all())
 async def on_ready():
     print(f"Logged in as {bot.user.name}")
     bot.add_view(TokenCheckView())
-    bot.add_view(VerifyView()) # โหลด View ยืนยันตัวตนให้ค้างไว้ตลอด
+    bot.add_view(VerifyView())
+    bot.add_view(RoleSelectView()) # โหลด View ระบบเลือกยศให้ค้างไว้ตลอด
 
-# --- ระบบยืนยันตัวตนแบบเท่ๆ (Verification System) ---
+# --- ระบบเลือกยศแบบ Dropdown (Role Select Menu) ---
+class RoleSelectDropdown(nextcord.ui.Select):
+    def __init__(self):
+        # รายการยศที่คุณต้องการให้เลือก (สามารถแก้ไขชื่อ, ไอคอน Emoji และ ID ยศตรงนีได้เลย)
+        options = [
+            nextcord.SelectOption(
+                label="Notification Ping", 
+                description="รับแจ้งเตือนข่าวสารและประกาศสำคัญ", 
+                emoji="🔔", 
+                value="111111111111111111"  # <-- เปลี่ยนเป็น ID ยศจริงในเซิร์ฟเวอร์
+            ),
+            nextcord.SelectOption(
+                label="Announcement", 
+                description="รับข่าวสารอัปเดตใหม่ๆ", 
+                emoji="📢", 
+                value="222222222222222222"  # <-- เปลี่ยนเป็น ID ยศจริงในเซิร์ฟเวอร์
+            ),
+            nextcord.SelectOption(
+                label="Giveaway Ping", 
+                description="แจ้งเตือนเวลามีกิจกรรมแจกของ", 
+                emoji="🎁", 
+                value="333333333333333333"  # <-- เปลี่ยนเป็น ID ยศจริงในเซิร์ฟเวอร์
+            ),
+        ]
+        super().__init__(placeholder="📌 กรุณาเลือกยศที่คุณต้องการ...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        role_id = int(self.values[0])
+        role = interaction.guild.get_role(role_id)
+
+        if not role:
+            return await interaction.response.send_message(
+                embed=nextcord.Embed(description="❌ ไม่พบยศนี้ในระบบ กรุณาติดต่อแอดมิน", color=nextcord.Color.red()),
+                ephemeral=True
+            )
+
+        # ตรวจสอบว่าผู้ใช้มีรึยัง ถ้ามีแล้วให้เอาออก (Toggle) ถ้ายังไม่มีให้เพิ่ม
+        if role in interaction.user.roles:
+            await interaction.user.remove_roles(role)
+            await interaction.response.send_message(
+                embed=nextcord.Embed(description=f"🗑️ ทำการ **ถอดออก** ยศ `{role.name}` ให้คุณเรียบร้อยแล้ว", color=nextcord.Color.orange()),
+                ephemeral=True
+            )
+        else:
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message(
+                embed=nextcord.Embed(description=f"✨ ทำการ **เพิ่ม** ยศ `{role.name}` ให้คุณเรียบร้อยแล้ว", color=nextcord.Color.green()),
+                ephemeral=True
+            )
+
+class RoleSelectView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(RoleSelectDropdown())
+
+
+# --- ระบบยืนยันตัวตนแบบเดิม ---
 class VerifyModal(nextcord.ui.Modal):
     def __init__(self, correct_code: str):
         super().__init__(title="🛡️ ระบบยืนยันตัวตนความปลอดภัยสูง")
@@ -52,10 +109,8 @@ class VerifyModal(nextcord.ui.Modal):
         user_answer = str(self.code_input.value).strip()
         
         if user_answer == self.correct_code:
-            # กำหนดไอดีของยศ (Role) ที่ต้องการให้หลังยืนยันตัวตนสำเร็จ (เปลี่ยนเลขใน string ด้านล่างเป็น ID ยศในเซิร์ฟเวอร์ของคุณ)
-            role_id = 000000000000000000  # <-- เปลี่ยนเป็น ID ยศสมาชิก
+            role_id = 000000000000000000  # <-- เปลี่ยนเป็น ID ยศสมาชิกหลังยืนยันตัวตน
             role = interaction.guild.get_role(role_id)
-            
             if role:
                 try:
                     await interaction.user.add_roles(role)
@@ -63,18 +118,12 @@ class VerifyModal(nextcord.ui.Modal):
                     pass
 
             await interaction.response.send_message(
-                embed=nextcord.Embed(
-                    description="### ✅ ยืนยันตัวตนสำเร็จ!\nยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์ คุณได้รับยศเรียบร้อยแล้ว",
-                    color=nextcord.Color.green()
-                ),
+                embed=nextcord.Embed(description="### ✅ ยืนยันตัวตนสำเร็จ!\nยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์", color=nextcord.Color.green()),
                 ephemeral=True
             )
         else:
             await interaction.response.send_message(
-                embed=nextcord.Embed(
-                    description="### ❌ รหัสยืนยันไม่ถูกต้อง!\nกรุณากดปุ่มยืนยันตัวตนใหม่อีกครั้ง",
-                    color=nextcord.Color.red()
-                ),
+                embed=nextcord.Embed(description="### ❌ รหัสยืนยันไม่ถูกต้อง!", color=nextcord.Color.red()),
                 ephemeral=True
             )
 
@@ -84,7 +133,6 @@ class VerifyView(nextcord.ui.View):
 
     @nextcord.ui.button(label="คลิกเพื่อยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button_main", emoji="✅")
     async def verify_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        # สุ่มเลข 4 หลักเพื่อความปลอดภัยเท่ๆ
         random_code = str(random.randint(1000, 9999))
         await interaction.response.send_modal(VerifyModal(correct_code=random_code))
 
@@ -116,10 +164,7 @@ class TokenModal(nextcord.ui.Modal):
 
             if response.status_code != 200:
                 return await interaction.followup.send(
-                    embed=nextcord.Embed(
-                        description="### ❌ Token ไม่ถูกต้อง หรือบัญชีถูกระงับ/ยืนยันตัวตน",
-                        color=nextcord.Color.red()
-                    ),
+                    embed=nextcord.Embed(description="### ❌ Token ไม่ถูกต้อง หรือบัญชีถูกระงับ", color=nextcord.Color.red()),
                     ephemeral=True
                 )
 
@@ -142,52 +187,22 @@ class TokenModal(nextcord.ui.Modal):
             elif premium_type == 3:
                 nitro_type = "Nitro Basic 🌟"
 
-            dm_embed = nextcord.Embed(
-                title="**🛡️ ผลการตรวจสอบ Token (ส่วนตัว)**",
-                description="ระบบได้ทำการตรวจสอบข้อมูลเบื้องต้นเรียบร้อยแล้ว",
-                color=nextcord.Color.blurple()
-            )
+            dm_embed = nextcord.Embed(title="**🛡️ ผลการตรวจสอบ Token (ส่วนตัว)**", color=nextcord.Color.blurple())
             dm_embed.add_field(name="👤 ชื่อผู้ใช้", value=f"`{username}`", inline=True)
             dm_embed.add_field(name="🆔 ไอดีผู้ใช้", value=f"`{user_id}`", inline=True)
-            dm_embed.add_field(name="🏷️ ประเภทบัญชี", value="`Bot Account`" if raw_token.startswith("Bot ") else "`User Account`", inline=True)
             dm_embed.add_field(name="📧 อีเมล", value=f"`{email}`", inline=True)
             dm_embed.add_field(name="📱 เบอร์โทรศัพท์", value=f"`{phone}`", inline=True)
             dm_embed.add_field(name="🔒 สถานะ 2FA", value=f"`{mfa}`", inline=True)
             dm_embed.add_field(name="💎 สถานะ Nitro", value=f"`{nitro_type}`", inline=False)
-            dm_embed.set_footer(text="ข้อมูลความปลอดภัย: Token ของคุณจะไม่ถูกบันทึกใดๆ ทั้งสิ้น")
-
-            avatar_hash = data.get('avatar')
-            if avatar_hash:
-                is_animated = avatar_hash.startswith("a_")
-                ext = "gif" if is_animated else "png"
-                dm_embed.set_thumbnail(url=f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_hash}.{ext}?size=256")
 
             try:
                 await interaction.user.send(embed=dm_embed)
-                await interaction.followup.send(
-                    embed=nextcord.Embed(
-                        description="### ✅ ตรวจสอบสำเร็จ! ระบบได้ส่งผลลัพธ์ไปที่ **DM (ข้อความส่วนตัว)** ของคุณแล้ว",
-                        color=nextcord.Color.green()
-                    ),
-                    ephemeral=True
-                )
+                await interaction.followup.send(embed=nextcord.Embed(description="### ✅ ส่งผลลัพธ์ไปที่ DM ของคุณแล้ว", color=nextcord.Color.green()), ephemeral=True)
             except nextcord.Forbidden:
-                await interaction.followup.send(
-                    embed=nextcord.Embed(
-                        description="### ⚠️ ไม่สามารถส่ง DM ได้ กรุณาเปิดรับข้อความส่วนตัวจากสมาชิกในเซิร์ฟเวอร์",
-                        color=nextcord.Color.orange()
-                    ),
-                    ephemeral=True
-                )
+                await interaction.followup.send(embed=nextcord.Embed(description="### ⚠️ กรุณาเปิดรับ DM ส่วนตัว", color=nextcord.Color.orange()), ephemeral=True)
 
         except Exception as e:
-            await interaction.followup.send(
-                embed=nextcord.Embed(
-                    description=f"### ❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: `{e}`",
-                    color=nextcord.Color.red()
-                ),
-                ephemeral=True
-            )
+            await interaction.followup.send(embed=nextcord.Embed(description=f"### ❌ เกิดข้อผิดพลาด: `{e}`", color=nextcord.Color.red()), ephemeral=True)
 
 class TokenCheckView(nextcord.ui.View):
     def __init__(self):
@@ -197,52 +212,40 @@ class TokenCheckView(nextcord.ui.View):
     async def check_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.send_modal(TokenModal())
 
-# คำสั่งติดตั้งปุ่ม Token Checker
+# --- คำสั่งติดตั้งระบบต่างๆ ---
+
 @bot.slash_command(name="setup-token-checker", description="🤖 ติดตั้งระบบ Token Checker")
 async def setup(interaction: nextcord.Interaction):
     if interaction.user.id in ownerid:
-        embed = nextcord.Embed(
-            title="**TOKEN CHECKER | ตรวจสอบ Discord Token**",
-            description=(
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° **TOKEN CHECKER** °•.\n"
-                "╭ ·  **ระบบตรวจสอบความถูกต้องและดูสิทธิ์ของ Token**\n"
-                "| ·  **แยกประเภทบัญชีอัตโนมัติ (User Account / Bot)**\n"
-                "| ·  **ตรวจสอบอีเมล, เบอร์โทรศัพท์ และสถานะ 2FA**\n"
-                "╰ ·  **เช็คสถานะแพลทินัม Nitro ล่าสุด นโยบายความปลอดภัย:**\n\n"
-                "• **ข้อมูล Token จะไม่ถูกนำไปบันทึกหรือบันทึกในฐานข้อมูลใดๆ**\n"
-                "• **ผลลัพธ์แสดงเฉพาะตัวคุณเท่านั้น (ส่งเข้า DM ส่วนตัว)**"
-            ),
-            color=nextcord.Color.red()
-        )
+        embed = nextcord.Embed(title="**TOKEN CHECKER**", color=nextcord.Color.red())
         embed.set_image(url=image)
-        embed.set_footer(text="ICEWEN_2 : TOKEN CHECKER SYSTEM")
-
         await interaction.channel.send(embed=embed, view=TokenCheckView())
-        await interaction.response.send_message("### ✅ ติดตั้งระบบ Token Checker สำเร็จ", ephemeral=True)
+        await interaction.response.send_message("✅ ติดตั้งสำเร็จ", ephemeral=True)
     else:
-        await interaction.response.send_message("### ❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
+        await interaction.response.send_message("❌ ไม่มีสิทธิ์", ephemeral=True)
 
-# คำสั่งติดตั้งระบบยืนยันตัวตน (/setup-verify)
-@bot.slash_command(name="setup-verify", description="🛡️ ติดตั้งระบบปุ่มยืนยันตัวตนสำหรับสมาชิกใหม่")
+@bot.slash_command(name="setup-verify", description="🛡️ ติดตั้งระบบยืนยันตัวตน")
 async def setup_verify(interaction: nextcord.Interaction):
     if interaction.user.id in ownerid:
-        embed = nextcord.Embed(
-            title="**VERIFICATION | ยืนยันตัวตนเพื่อเข้าสู่เซิร์ฟเวอร์**",
-            description=(
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° **VERIFY SYSTEM** °•.\n\n"
-                "🛡️ **กรุณากดปุ่มด้านล่างเพื่อทำการยืนยันตัวตน**\n"
-                "• ป้องกันบอทและไอดีสแปมเข้าสู่เซิร์ฟเวอร์\n"
-                "• กดปุ่มแล้วกรอกรหัสตัวเลขตามที่ระบบกำหนดเพื่อรับยศอัตโนมัติ"
-            ),
-            color=nextcord.Color.blurple()
-        )
-        embed.set_footer(text="SECURITY SYSTEM : ICEWEN_2")
-
+        embed = nextcord.Embed(title="**VERIFICATION SYSTEM**", description="กดปุ่มด้านล่างเพื่อยืนยันตัวตน", color=nextcord.Color.blurple())
         await interaction.channel.send(embed=embed, view=VerifyView())
-        await interaction.response.send_message("### ✅ ติดตั้งระบบยืนยันตัวตนสำเร็จ", ephemeral=True)
+        await interaction.response.send_message("✅ ติดตั้งสำเร็จ", ephemeral=True)
+    else:
+        await interaction.response.send_message("❌ ไม่มีสิทธิ์", ephemeral=True)
+
+# คำสั่งเรียกเมนูเลือกยศ
+@bot.slash_command(name="setup-roles", description="🎯 ติดตั้งระบบเลือกยศด้วยตัวเอง (Reaction Roles)")
+async def setup_roles(interaction: nextcord.Interaction):
+    if interaction.user.id in ownerid:
+        embed = nextcord.Embed(
+            title="**SELF-ASSIGNABLE ROLES | ระบบเลือกยศ**",
+            description="📌 **เลือกยศที่คุณต้องการรับการแจ้งเตือนได้จากเมนูด้านล่างนี้**\n*(กดซ้ำเพื่อเป็นการถอดหรือเพิ่มยศ)*",
+            color=nextcord.Color.gold()
+        )
+        await interaction.channel.send(embed=embed, view=RoleSelectView())
+        await interaction.response.send_message("### ✅ ติดตั้งระบบเลือกยศสำเร็จ", ephemeral=True)
     else:
         await interaction.response.send_message("### ❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
 
-# เริ่มรันระบบเว็บจำลองควบคู่ไปกับบอท
 keep_alive()
 bot.run(token)
