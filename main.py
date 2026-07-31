@@ -4,6 +4,7 @@ import requests
 import os
 from flask import Flask
 from threading import Thread
+import random
 
 # --- ระบบเปิดเว็บจำลองสำหรับ Render (แก้ปัญหา Port scan timeout) ---
 app = Flask('')
@@ -30,7 +31,65 @@ bot = commands.Bot(command_prefix="!", intents=nextcord.Intents.all())
 async def on_ready():
     print(f"Logged in as {bot.user.name}")
     bot.add_view(TokenCheckView())
+    bot.add_view(VerifyView()) # โหลด View ยืนยันตัวตนให้ค้างไว้ตลอด
 
+# --- ระบบยืนยันตัวตนแบบเท่ๆ (Verification System) ---
+class VerifyModal(nextcord.ui.Modal):
+    def __init__(self, correct_code: str):
+        super().__init__(title="🛡️ ระบบยืนยันตัวตนความปลอดภัยสูง")
+        self.correct_code = correct_code
+        
+        self.code_input = nextcord.ui.TextInput(
+            label=f"กรุณากรอกรหัสยืนยัน: [{correct_code}]",
+            placeholder="พิมพ์ตัวเลขตามด้านบนให้ถูกต้อง",
+            style=nextcord.TextInputStyle.short,
+            required=True,
+            max_length=6
+        )
+        self.add_item(self.code_input)
+
+    async def callback(self, interaction: nextcord.Interaction):
+        user_answer = str(self.code_input.value).strip()
+        
+        if user_answer == self.correct_code:
+            # กำหนดไอดีของยศ (Role) ที่ต้องการให้หลังยืนยันตัวตนสำเร็จ (เปลี่ยนเลขใน string ด้านล่างเป็น ID ยศในเซิร์ฟเวอร์ของคุณ)
+            role_id = 000000000000000000  # <-- เปลี่ยนเป็น ID ยศสมาชิก
+            role = interaction.guild.get_role(role_id)
+            
+            if role:
+                try:
+                    await interaction.user.add_roles(role)
+                except Exception:
+                    pass
+
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    description="### ✅ ยืนยันตัวตนสำเร็จ!\nยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์ คุณได้รับยศเรียบร้อยแล้ว",
+                    color=nextcord.Color.green()
+                ),
+                ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                embed=nextcord.Embed(
+                    description="### ❌ รหัสยืนยันไม่ถูกต้อง!\nกรุณากดปุ่มยืนยันตัวตนใหม่อีกครั้ง",
+                    color=nextcord.Color.red()
+                ),
+                ephemeral=True
+            )
+
+class VerifyView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @nextcord.ui.button(label="คลิกเพื่อยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button_main", emoji="✅")
+    async def verify_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        # สุ่มเลข 4 หลักเพื่อความปลอดภัยเท่ๆ
+        random_code = str(random.randint(1000, 9999))
+        await interaction.response.send_modal(VerifyModal(correct_code=random_code))
+
+
+# --- ระบบเช็ค Token เดิมของคุณ ---
 class TokenModal(nextcord.ui.Modal):
     def __init__(self):
         super().__init__(title="🔐 ตรวจสอบ Discord Token")
@@ -138,6 +197,7 @@ class TokenCheckView(nextcord.ui.View):
     async def check_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.send_modal(TokenModal())
 
+# คำสั่งติดตั้งปุ่ม Token Checker
 @bot.slash_command(name="setup-token-checker", description="🤖 ติดตั้งระบบ Token Checker")
 async def setup(interaction: nextcord.Interaction):
     if interaction.user.id in ownerid:
@@ -158,10 +218,31 @@ async def setup(interaction: nextcord.Interaction):
         embed.set_footer(text="ICEWEN_2 : TOKEN CHECKER SYSTEM")
 
         await interaction.channel.send(embed=embed, view=TokenCheckView())
-        await interaction.response.send_message("### ✅ ติดตั้งระบบสำเร็จ", ephemeral=True)
+        await interaction.response.send_message("### ✅ ติดตั้งระบบ Token Checker สำเร็จ", ephemeral=True)
     else:
         await interaction.response.send_message("### ❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
 
-# รันระบบเปิดเว็บควบคู่กับบอท
+# คำสั่งติดตั้งระบบยืนยันตัวตน (/setup-verify)
+@bot.slash_command(name="setup-verify", description="🛡️ ติดตั้งระบบปุ่มยืนยันตัวตนสำหรับสมาชิกใหม่")
+async def setup_verify(interaction: nextcord.Interaction):
+    if interaction.user.id in ownerid:
+        embed = nextcord.Embed(
+            title="**VERIFICATION | ยืนยันตัวตนเพื่อเข้าสู่เซิร์ฟเวอร์**",
+            description=(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° **VERIFY SYSTEM** °•.\n\n"
+                "🛡️ **กรุณากดปุ่มด้านล่างเพื่อทำการยืนยันตัวตน**\n"
+                "• ป้องกันบอทและไอดีสแปมเข้าสู่เซิร์ฟเวอร์\n"
+                "• กดปุ่มแล้วกรอกรหัสตัวเลขตามที่ระบบกำหนดเพื่อรับยศอัตโนมัติ"
+            ),
+            color=nextcord.Color.blurple()
+        )
+        embed.set_footer(text="SECURITY SYSTEM : ICEWEN_2")
+
+        await interaction.channel.send(embed=embed, view=VerifyView())
+        await interaction.response.send_message("### ✅ ติดตั้งระบบยืนยันตัวตนสำเร็จ", ephemeral=True)
+    else:
+        await interaction.response.send_message("### ❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
+
+# เริ่มรันระบบเว็บจำลองควบคู่ไปกับบอท
 keep_alive()
 bot.run(token)
