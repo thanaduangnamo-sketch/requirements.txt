@@ -10,7 +10,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Girl Bot is running!"
+    return "Frost AI Girl Bot is running with Streaming Status!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -23,7 +23,9 @@ def keep_alive():
 token = os.environ.get("DISCORD_TOKEN")
 gemini_api_key = os.environ.get("GEMINI_API_KEY")
 
-bot = commands.Bot(command_prefix="!", intents=nextcord.Intents.all())
+# เปิด Intents ทั้งหมดเพื่อให้บอททำงานได้เต็มที่
+intents = nextcord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ตั้งค่า Google GenAI Client
 client = genai.Client(api_key=gemini_api_key)
@@ -33,7 +35,19 @@ allowed_ai_channels = {}
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Girl Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Girl Mode, Purple Status)")
+
+    # 🌸 ตั้งค่าสถานะบอทให้เป็น "กำลังสตรีม" (Streaming - สีม่วง) 🌸
+    # ข้อความที่จะแสดงตรงสถานะ
+    streaming_message = "กำลังคุยกับทุกคนอย่างน่ารักเลยค่ะ 🌸"
+    # ลิงก์ Twitch (จำเป็นต้องใส่เพื่อให้สถานะเป็นสีม่วง)
+    twitch_url = "https://www.twitch.tv/monstercat" # สามารถเปลี่ยนเป็นลิงก์ของคุณเองได้
+
+    activity = nextcord.Streaming(name=streaming_message, url=twitch_url)
+    
+    # เปลี่ยนสถานะเป็น online และตั้งค่า activity เป็น streaming
+    await bot.change_presence(status=nextcord.Status.online, activity=activity)
+    print("✅ ตั้งค่าสถานะสีม่วงสำเร็จแล้วค่ะ!")
 
 
 # ==========================================
@@ -59,6 +73,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 # ==========================================
 @bot.event
 async def on_message(message):
+    # ป้องกันบอทตอบตัวเอง
     if message.author.bot or not message.guild:
         return
 
@@ -69,7 +84,7 @@ async def on_message(message):
     if target_channel_id and message.channel.id == target_channel_id:
         user_message = message.content
 
-        # แจ้งพิมพ์กำลังพิมพ์ (Typing) ให้ดูสมจริง
+        # แจ้งว่าบอทกำลังพิมพ์ (Typing)
         async with message.channel.typing():
             try:
                 # คำสั่งกำกับบุคลิกให้ AI ตอบแบบผู้หญิง น่ารัก เป็นกันเอง
@@ -79,7 +94,7 @@ async def on_message(message):
                 )
                 
                 response = client.models.generate_content(
-                    model='gemini-2.5-flash',
+                    model='gemini-1.5-flash',
                     contents=f"{system_instruction}\n\nผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
                 )
                 ai_reply = response.text
@@ -89,6 +104,7 @@ async def on_message(message):
         # ส่งข้อความตอบกลับ
         await message.channel.send(ai_reply)
 
+    # สำคัญ: ต้องมีบรรทัดนี้เพื่อให้บอทรับคำสั่ง Slash Command อื่นๆ ได้ด้วย
     await bot.process_commands(message)
 
 
