@@ -38,14 +38,10 @@ async def on_ready():
     print(f"Logged in as {bot.user.name} (Frost AI - Girl Mode, Purple Status)")
 
     # 🌸 ตั้งค่าสถานะบอทให้เป็น "กำลังสตรีม" (Streaming - สีม่วง) 🌸
-    # ข้อความที่จะแสดงตรงสถานะ
     streaming_message = "กำลังคุยกับทุกคนอย่างน่ารักเลยค่ะ 🌸"
-    # ลิงก์ Twitch (จำเป็นต้องใส่เพื่อให้สถานะเป็นสีม่วง)
-    twitch_url = "https://www.twitch.tv/monstercat" # สามารถเปลี่ยนเป็นลิงก์ของคุณเองได้
+    twitch_url = "https://www.twitch.tv/monstercat"
 
     activity = nextcord.Streaming(name=streaming_message, url=twitch_url)
-    
-    # เปลี่ยนสถานะเป็น online และตั้งค่า activity เป็น streaming
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
     print("✅ ตั้งค่าสถานะสีม่วงสำเร็จแล้วค่ะ!")
 
@@ -69,11 +65,11 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# 2. ระบบพูดคุยโต้ตอบกับ Frost AI (สไตล์ผู้หญิง)
+# 2. ระบบพูดคุยโต้ตอบกับ Frost AI (สไตล์ผู้หญิง + แก้บัค)
 # ==========================================
 @bot.event
 async def on_message(message):
-    # ป้องกันบอทตอบตัวเอง
+    # ป้องกันบอทตอบตัวเองหรือข้อความจากระบบอื่น
     if message.author.bot or not message.guild:
         return
 
@@ -93,18 +89,21 @@ async def on_message(message):
                     "ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ"
                 )
                 
+                # ใช้โมเดลเวอร์ชันมาตรฐานล่าสุด
                 response = client.models.generate_content(
-                    model='gemini-1.5-flash',
+                    model='gemini-2.5-flash',
                     contents=f"{system_instruction}\n\nผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
                 )
                 ai_reply = response.text
             except Exception as e:
-                ai_reply = "อุ๊ย... ช่วงนี้ฟรอยด์มึนๆ นิดหน่อยค่ะ ลองพิมพ์มาใหม่อีกรอบนะคะ 🥺"
+                # ปริ้นท์ Error จริงออกดูที่หน้า Logs ของ Render เพื่อความโปร่งใส
+                print(f"Gemini API Error: {e}")
+                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้ฟรอยด์เชื่อมต่อสมองกล AI ไม่สำเร็จค่ะ ลองเช็ค API Key ใน Render ดูใหม่อีกรอบนะคะ 🥺"
 
         # ส่งข้อความตอบกลับ
         await message.channel.send(ai_reply)
 
-    # สำคัญ: ต้องมีบรรทัดนี้เพื่อให้บอทรับคำสั่ง Slash Command อื่นๆ ได้ด้วย
+    # สำคัญ: เพื่อให้บอทรับคำสั่ง Slash Command อื่นๆ ได้ด้วย
     await bot.process_commands(message)
 
 
