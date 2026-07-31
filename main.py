@@ -107,7 +107,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# ระบบพูดคุยโต้ตอบกับ Frost AI (ตอบเร็วและยาวเต็มอิ่ม)
+# ระบบพูดคุยโต้ตอบกับ Frost AI
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -122,19 +122,19 @@ async def on_message(message):
 
         async with message.channel.typing():
             try:
-                system_instruction = (
+                prompt = (
                     "คุณคือ 'Frost AI' ผู้ช่วยสาวสวยสุดน่ารัก เป็นกันเอง พูดจาไพเราะ มีหางเสียงค่ะ/คะ "
                     "ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ "
-                    "สามารถอธิบายเนื้อหาได้อย่างละเอียด ครบถ้วน และจัดเต็มตามที่ผู้ใช้ต้องการ"
+                    f"ผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
                 )
                 
                 response = client.models.generate_content(
                     model='gemini-2.5-flash',
-                    contents=f"{system_instruction}\n\nผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
+                    contents=prompt
                 )
                 ai_reply = response.text
             except Exception as e:
-                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้ฟรอยด์เชื่อมต่อสมองกล AI ไม่สำเร็จค่ะ 🥺"
+                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้ฟรอยด์เชื่อมต่อสมองกล AI ไม่สำเร็จค่ะ 🥺 (Error: {e})"
 
         # แบ่งส่งข้อความหากยาวเกินขีดจำกัดของ Discord (2000 ตัวอักษร)
         if len(ai_reply) > 2000:
