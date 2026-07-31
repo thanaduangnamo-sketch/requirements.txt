@@ -38,9 +38,9 @@ allowed_ai_channels = {}
 async def on_ready():
     print(f"Logged in as {bot.user.name} (Frost AI - Groq Mode)")
 
-    # 1. เชื่อมต่อ Wavelink ผ่านโฮสต์สาธารณะฟรีตัวสำรอง
+    # 1. เชื่อมต่อ Wavelink ผ่านโหนดสาธารณะสำรองตัวใหม่
     try:
-        node = wavelink.Node(uri='https://lavalink.astu.dev', password='youshallnotpass')
+        node = wavelink.Node(uri='https://lavalink.jirayu.net', password='youshallnotpass')
         await wavelink.Pool.connect(nodes=[node], client=bot)
         print("✅ เชื่อมต่อ Lavalink สำเร็จแล้วค่ะ!")
     except Exception as e:
@@ -122,9 +122,8 @@ async def on_message(message):
 
         async with message.channel.typing():
             try:
-                # เรียกใช้งาน Groq API
                 response = groq_client.chat.completions.create(
-                    model="llama3-70b-8192", # ใช้โมเดลตัวเก่งของ Llama 3
+                    model="llama-3.3-70b-versatile",
                     messages=[
                         {
                             "role": "system",
