@@ -3,15 +3,15 @@ from nextcord.ext import commands
 import os
 from flask import Flask
 from threading import Thread
-from google import genai
 import wavelink
+from groq import Groq
 
 # --- ระบบเปิดเว็บจำลองสำหรับ Render (แก้ปัญหา Port scan timeout) ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (Music + AI + Purple Status) is running!"
+    return "Frost AI Bot (Music + Groq AI + Purple Status) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -22,21 +22,21 @@ def keep_alive():
 # -----------------------------------------------------------------
 
 token = os.environ.get("DISCORD_TOKEN")
-gemini_api_key = os.environ.get("GEMINI_API_KEY")
+groq_api_key = os.environ.get("GROQ_API_KEY")
 
 # เปิด Intents ทั้งหมด
 intents = nextcord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ตั้งค่า Google GenAI Client
-client = genai.Client(api_key=gemini_api_key)
+# ตั้งค่า Groq Client
+groq_client = Groq(api_key=groq_api_key)
 
 # ตัวแปรเก็บข้อมูลช่อง AI
 allowed_ai_channels = {}
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Multi-feature Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Groq Mode)")
 
     # 1. เชื่อมต่อ Wavelink ผ่านโฮสต์สาธารณะฟรีตัวสำรอง
     try:
@@ -107,7 +107,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# ระบบพูดคุยโต้ตอบกับ Frost AI
+# ระบบพูดคุยโต้ตอบกับ Frost AI (ใช้ Groq API)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -122,19 +122,26 @@ async def on_message(message):
 
         async with message.channel.typing():
             try:
-                prompt = (
-                    "คุณคือ 'Frost AI' ผู้ช่วยสาวสวยสุดน่ารัก เป็นกันเอง พูดจาไพเราะ มีหางเสียงค่ะ/คะ "
-                    "ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ "
-                    f"ผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
+                # เรียกใช้งาน Groq API
+                response = groq_client.chat.completions.create(
+                    model="llama3-70b-8192", # ใช้โมเดลตัวเก่งของ Llama 3
+                    messages=[
+                        {
+                            "role": "system",
+                            "content": "คุณคือ 'Frost AI' ผู้ช่วยสาวสวยสุดน่ารัก เป็นกันเอง พูดจาไพเราะ มีหางเสียงค่ะ/คะ ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ ตอบข้อมูลได้ละเอียดและครบถ้วน"
+                        },
+                        {
+                            "role": "user",
+                            "content": f"ผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
+                        }
+                    ],
+                    temperature=0.7,
+                    max_tokens=2048
                 )
+                ai_reply = response.choices[0].message.content
                 
-                response = client.models.generate_content(
-                    model='gemini-2.5-flash',
-                    contents=prompt
-                )
-                ai_reply = response.text
             except Exception as e:
-                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้ฟรอยด์เชื่อมต่อสมองกล AI ไม่สำเร็จค่ะ 🥺 (Error: {e})"
+                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้สมองกล Groq ของฟรอยด์เชื่อมต่อไม่สำเร็จค่ะ 🥺 (Error: {e})"
 
         # แบ่งส่งข้อความหากยาวเกินขีดจำกัดของ Discord (2000 ตัวอักษร)
         if len(ai_reply) > 2000:
