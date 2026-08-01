@@ -10,7 +10,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Ticket Bot is running!"
+    return "Multi-System Bot is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -31,7 +31,11 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Ticket System Mode)")
+    # ลงทะเบียน Persistent Views ให้ปุ่มยังใช้งานได้หลังบอทรีสตาร์ท
+    bot.add_view(PersistentVerifyView())
+    bot.add_view(TicketView())
+    
+    print(f"Logged in as {bot.user.name} (Verify & Ticket Persistent Mode)")
     
     try:
         synced = await bot.tree.sync()
@@ -40,14 +44,101 @@ async def on_ready():
         print(f"Failed to sync commands: {e}")
 
     streaming_activity = discord.Streaming(
-        name="ระบบติดต่อแอดมินพร้อมใช้งานครับ",
+        name="ระบบยืนยันตัวตนและ Ticket พร้อมใช้งานครับ",
         url="https://www.twitch.tv/discord"
     )
     await bot.change_presence(status=discord.Status.online, activity=streaming_activity)
     print("✅ บอทออนไลน์ในสถานะสตรีมมิ่ง (เม็ดม่วง) เรียบร้อยแล้วครับ")
 
 
-# --- View สำหรับปุ่มกดเปิด Ticket ---
+# ==========================================
+# 1. ระบบยืนยันตัวตน (Persistent View)
+# ==========================================
+class PersistentVerifyView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="ยืนยันตัวตน",
+        style=discord.ButtonStyle.success,
+        emoji="🍀",
+        custom_id="persistent_verify:button"
+    )
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # ค้นหายศในเซิร์ฟเวอร์จากชื่อยศมาตรฐาน หรือจะตั้งค่าตามต้องการ
+        role = discord.utils.get(interaction.guild.roles, name="Verified") or discord.utils.get(interaction.guild.roles, name="Member")
+        
+        if not role:
+            # หากหาไม่เจอ ให้หายศแรกสุดที่เป็นยศแจก หรือแจ้งเตือนให้แอดมินตั้งชื่อยศให้ตรงกัน
+            return await interaction.response.send_message(
+                "❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ (กรุณาตั้งชื่อยศว่า 'Verified' หรือ 'Member' ในเซิร์ฟเวอร์)",
+                ephemeral=True
+            )
+
+        if role in interaction.user.roles:
+            return await interaction.response.send_message(
+                "❌ คุณได้ทำการยืนยันตัวตนไปแล้ว",
+                ephemeral=True
+            )
+
+        await interaction.user.add_roles(role)
+        await interaction.response.send_message(
+            f"✅ รับยศ {role.mention} เรียบร้อยแล้ว",
+            ephemeral=True
+        )
+
+
+@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนสไตล์เท่ๆ")
+@app_commands.describe(
+    role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับ",
+    image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)",
+    image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)"
+)
+async def verify_command(
+    interaction: discord.Interaction, 
+    role: discord.Role, 
+    image: discord.Attachment = None,
+    image_url: str = None
+):
+    embed = discord.Embed(
+        title="🧸 ระบบยืนยันตัวตน",
+        description=(
+            "```ansi\n"
+            "\u001b[32m┌─────────────────────────────┐\n"
+            "  ✨ Welcome to our Server ✨\n"
+            "└─────────────────────────────┘\n"
+            "\u001b[0m```\n"
+            "☘️ เพื่อรับสิทธิ์ในการใช้งานและพูดคุย\n"
+            "🍀 กรุณากดปุ่มด้านล่างเพื่อ **ยืนยันตัวตน**\n\n"
+            f"» ยศที่คุณจะได้รับคือ: {role.mention}\n\n"
+            "```ansi\n"
+            "\u001b[32m┌─────────── •°·.•°- ───────────┐\n"
+            "  🍀 กดเลย แล้วเจอกันข้างใน! 🦋\n"
+            "└─────────── •°·.•°- ───────────┘\n"
+            "\u001b[0m"
+        ),
+        color=0x2b2d31
+    )
+
+    target_image = image.url if image else (image_url if image_url else None)
+    if target_image:
+        embed.set_image(url=target_image)
+
+    # ส่งข้อความพร้อมติด View แบบ Persistent
+    await interaction.channel.send(
+        embed=embed,
+        view=PersistentVerifyView()
+    )
+
+    await interaction.response.send_message(
+        "✅ สร้างหน้าต่างยืนยันตัวตนเรียบร้อยครับ",
+        ephemeral=True
+    )
+
+
+# ==========================================
+# 2. ระบบ Ticket ติดต่อแอดมิน (Persistent View)
+# ==========================================
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -55,13 +146,13 @@ class TicketView(discord.ui.View):
     @discord.ui.button(
         label="สอบถาม/แจ้งปัญหา",
         style=discord.ButtonStyle.success,
-        emoji="📩"
+        emoji="📩",
+        custom_id="persistent_ticket:button"
     )
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         user = interaction.user
 
-        # ป้องกันการสร้างห้องซ้ำสำหรับผู้ใช้คนเดิม (เช็คชื่อห้อง)
         existing_channel = discord.utils.get(guild.text_channels, name=f"ticket-{user.name.lower()}")
         if existing_channel:
             return await interaction.response.send_message(
@@ -69,14 +160,12 @@ class TicketView(discord.ui.View):
                 ephemeral=True
             )
 
-        # ตั้งค่าสิทธิ์การมองเห็นห้อง (ให้เฉพาะแอดมินกับคนที่กดเห็นห้องนี้)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
-        # สร้างห้องในหมวดหมู่ หรือสร้างปกติ
         ticket_channel = await guild.create_text_channel(
             name=f"ticket-{user.name}",
             overwrites=overwrites,
@@ -89,7 +178,6 @@ class TicketView(discord.ui.View):
             color=0x2b2d31
         )
         
-        # ปุ่มสำหรับปิด Ticket
         close_view = CloseTicketView()
         await ticket_channel.send(content=f"{user.mention}", embed=embed, view=close_view)
 
@@ -99,7 +187,6 @@ class TicketView(discord.ui.View):
         )
 
 
-# --- View สำหรับปุ่มปิดห้อง Ticket ---
 class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -107,7 +194,8 @@ class CloseTicketView(discord.ui.View):
     @discord.ui.button(
         label="ปิด Ticket",
         style=discord.ButtonStyle.danger,
-        emoji="🔒"
+        emoji="🔒",
+        custom_id="persistent_close_ticket:button"
     )
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("🔒 กำลังปิดห้องนี้ใน 3 วินาที...", ephemeral=True)
@@ -116,11 +204,10 @@ class CloseTicketView(discord.ui.View):
         await interaction.channel.delete()
 
 
-# --- คำสั่ง Slash Command สำหรับเรียกหน้าต่างแจ้งปัญหา ---
 @bot.tree.command(name="ติดต่อแอดมิน", description="สร้างระบบติดต่อแอดมิน / แจ้งปัญหา (Ticket)")
 @app_commands.describe(
-    image="อัปโหลดรูปภาพประกอบ Embed (ไม่บังคับ)",
-    image_url="หรือใส่ลิงก์รูปภาพ (URL) แทนการอัปโหลด (ไม่บังคับ)"
+    image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)",
+    image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)"
 )
 async def ticket_command(
     interaction: discord.Interaction,
@@ -137,19 +224,14 @@ async def ticket_command(
             "\u001b[30;1m┌─────────────────────────────────────────┐\n"
             "  🟩 โปรดอธิบายรายละเอียดให้ครบถ้วน\n"
             "  ⏳ แอดมินจะรีบเข้ามาตอบโดยเร็วที่สุด\n"
-            "  ⚠️ การเปิดตั๋วเล่น ๆ หรือไม่เหมาะสม อาจส่งผลชาติต่อสิทธิ์การใช้งาน\n"
+            "  ⚠️ การเปิดตั๋วเล่น ๆ หรือไม่เหมาะสม อาจส่งผลต่อสิทธิ์การใช้งาน\n"
             "└─────────────────────────────────────────┘\n"
             "\u001b[0m"
         ),
-        color=0xf1c40f  # แถบสีเหลืองด้านข้างแบบในรูปตัวอย่าง
+        color=0xf1c40f
     )
 
-    target_image = None
-    if image:
-        target_image = image.url
-    elif image_url:
-        target_image = image_url
-
+    target_image = image.url if image else (image_url if image_url else None)
     if target_image:
         embed.set_image(url=target_image)
 
