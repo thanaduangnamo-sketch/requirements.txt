@@ -40,11 +40,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 # ==========================================
-# 🟩 ระบบรับยศทั่วไป (Role Select Menu แบบในรูป)
+# 🟩 ระบบรับยศทั่วไป (Role Select Menu)
 # ==========================================
 class GeneralRoleSelect(discord.ui.Select):
     def __init__(self, guild: discord.Guild):
-        # 💡 คำแนะนำ: เปลี่ยน label เป็นชื่อยศจริง และ value เป็น ID ของยศในเซิร์ฟเวอร์ของคุณ
         options = [
             discord.SelectOption(label="ยศที่ 1 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345678"),
             discord.SelectOption(label="ยศที่ 2 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345679"),
@@ -62,16 +61,15 @@ class GeneralRoleSelect(discord.ui.Select):
         try:
             role_id = int(self.values[0])
         except ValueError:
-            return await interaction.response.send_message("❌ ค่า ID ยศไม่ถูกต้อง กรุณาติดต่อแอดมินให้ตั้งค่า Role ID ใหม่", ephemeral=True)
+            return await interaction.response.send_message("❌ ค่า ID ยศไม่ถูกต้อง กรุณาติดต่อแอดมิน", ephemeral=True)
             
         role = interaction.guild.get_role(role_id)
 
         if not role:
-            return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบเซิร์ฟเวอร์ กรุณาตรวจสอบ ID ยศอีกครั้ง", ephemeral=True)
+            return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบเซิร์ฟเวอร์", ephemeral=True)
 
         user = interaction.user
 
-        # กดซ้ำเพื่อคืนยศ / กดครั้งแรกเพื่อรับยศ (Toggle)
         if role in user.roles:
             await user.remove_roles(role)
             await interaction.response.send_message(f"🗑️ ทำการคืนยศ **{role.name}** เรียบร้อยแล้วครับ", ephemeral=True)
@@ -137,7 +135,7 @@ async def on_ready():
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
     bot.add_view(TokenCheckerView())
-    bot.add_view(GeneralRoleView()) # ลงทะเบียน View ระบบรับยศให้กดได้ตลอดเวลา
+    bot.add_view(GeneralRoleView())
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -391,13 +389,13 @@ async def checktoken_command(interaction: discord.Interaction):
 
 
 # ==========================================
-# 1. ระบบยืนยันตัวตน (Persistent View)
+# 1. ระบบยืนยันตัวตน (ดีไซน์สไตล์ Rain Drops แบบในภาพ)
 # ==========================================
 class PersistentVerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.success, emoji="🌳", custom_id="persistent_verify:button")
+    @discord.ui.button(label="【 ☁️ กดเพื่อยืนยันตัวตน 】", style=discord.ButtonStyle.success, emoji="🟢", custom_id="persistent_verify:button")
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
         role = discord.utils.get(interaction.guild.roles, name="Verified") or discord.utils.get(interaction.guild.roles, name="Member")
         
@@ -405,52 +403,36 @@ class PersistentVerifyView(discord.ui.View):
             return await interaction.response.send_message("❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ (ตั้งชื่อยศ 'Verified' หรือ 'Member')", ephemeral=True)
 
         if role in interaction.user.roles:
-            return await interaction.response.send_message("❌ คุณได้ทำการยืนยันตัวตนไปแล้ว", ephemeral=True)
+            await interaction.user.remove_roles(role)
+            return await interaction.response.send_message(f"🗑️ ทำการคืนยศ **{role.name}** เรียบร้อยแล้วครับ", ephemeral=True)
 
         await interaction.user.add_roles(role)
-        
-        success_embed = discord.Embed(title="✅ VERIFY SUCCEEDED", color=0x2ecc71, timestamp=datetime.utcnow())
-        success_embed.add_field(name="⭐ USER", value=f"{interaction.user.mention}", inline=False)
-        success_embed.add_field(name="🥟 USERID", value=f"`{interaction.user.id}`", inline=False)
-        success_embed.add_field(name="🚀 ROLE", value=f"{role.mention}", inline=False)
-        success_embed.set_footer(text="ICEWEN_2 : VERIFY SYSTEM")
-
-        await interaction.response.send_message(embed=success_embed, ephemeral=True)
-
-    @discord.ui.button(label="คู่มือการยืนยันตัวตน", style=discord.ButtonStyle.secondary, emoji="🎄", custom_id="persistent_verify:guide")
-    async def guide_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        guide_embed = discord.Embed(
-            title="📖 | คู่มือการยืนยันตัวตน",
-            description="> 1. กดปุ่ม **'ยืนยันตัวตน'** สีเขียว\n> 2. ระบบจะทำการมอบยศให้อัตโนมัติทันที\n> 3. หากมีปัญหาติดต่อแอดมิน",
-            color=0x2b2d31
-        )
-        await interaction.response.send_message(embed=guide_embed, ephemeral=True)
+        await interaction.response.send_message(f"✅ คุณได้รับยศ **{role.name}** เรียบร้อยแล้วครับ!", ephemeral=True)
 
 
-@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนแบบใหม่ดีไซน์น่ารัก")
-@app_commands.describe(role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับ", image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)", image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)", url_link="ใส่ลิงก์เว็บไซต์สำหรับปุ่ม why? (ไม่บังคับ)")
-async def verify_command(interaction: discord.Interaction, role: discord.Role, image: discord.Attachment = None, image_url: str = None, url_link: str = "https://your-link-here.com"):
+@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนดีไซน์สวยงามสไตล์ Rain Drops")
+@app_commands.describe(image_url="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)")
+async def verify_command(interaction: discord.Interaction, image_url: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
     embed = discord.Embed(
+        title="💬 ระบบยืนยันตัวตน",
         description=(
-            "+  . ✦ 🐈‍⬛ ' **ระบบยืนยันตัวตน**\n\n"
-            "+  . ✦ 🐉 ' ยืนยันตน ✨ ง่ายๆ ✨ ระบบคุณภาพ\n"
-            f"+  . ✦ 🐑 ' ยืนยันแล้วจะได้รับบทบาท 👑 {role.mention} 👑\n"
-            "+  . ✦ 🐉 ' ยืนยันไม่กี่ ⚡ ขั้นตอน ⚡ ก็ได้รับบทบาท\n"
-            "+  . ✦ 🐰 ' มีคู่มือการใช้งานระบบแบบ 📚 ละเอียด 📚"
+            ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•.\n\n"
+            "🟢 : กดปุ่มด้านล่างเพื่อยืนยันตัวตนรับยศ\n"
+            "🟢 : กดปุ่มซ้ำ เพื่อคืนยศ\n\n"
+            ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•."
         ),
         color=0x2b2d31
     )
-
-    target_image = image.url if image else (image_url if image_url else "https://i.ibb.co/QcHHS4H/Discord.png")
-    if target_image:
-        embed.set_image(url=target_image)
+    
+    if image_url:
+        embed.set_image(url=image_url)
+        
+    embed.set_footer(text="© VERIFY BOT")
 
     view = PersistentVerifyView()
-    url_button = discord.ui.Button(label="why?", emoji="🌲", style=discord.ButtonStyle.link, url=url_link)
-    view.add_item(url_button)
 
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างหน้าต่างยืนยันตัวตนเรียบร้อยครับ", ephemeral=True)
+    await interaction.response.send_message("✅ สร้างหน้าต่างระบบยืนยันตัวตนเรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
