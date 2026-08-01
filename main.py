@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (Dual AI Mode + Quick Commands) is running!"
+    return "Frost AI Bot (Dual Channels AI Mode) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -30,6 +30,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 groq_client = Groq(api_key=groq_api_key)
 
+# รองรับหลายห้องต่อ 1 เซิร์ฟเวอร์ (เก็บเป็น List ของ Channel ID)
 allowed_ai_channels = {}
 ai_modes = {} 
 log_channels = {}
@@ -39,12 +40,12 @@ COOLDOWN_TIME = 3.0
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Fixed Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Multi Channel)")
     
     if not check_unverified_users.is_running():
         check_unverified_users.start()
 
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ระบบเลือกโหมด AI (สุภาพ / ปากแจ๋ว) 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ระบบ AI รองรับ 2 ช่องแชท 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
     print("✅ บอทพร้อมทำงานแล้วค่ะ!")
 
@@ -369,18 +370,30 @@ async def setup_ticket(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 7. ระบบตั้งค่าช่องคุยกับ AI และเลือกโหมด
+# 7. ระบบตั้งค่าช่องคุยกับ AI (รองรับ 2 ช่องแชท)
 # ==========================================
-@bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
-async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
+@bot.slash_command(name="set-ai-channel-choices", description="🌸 กำหนดช่องให้ Frost AI พูดคุยได้สูงสุด 2 ช่องแชทพร้อมกัน")
+async def set_ai_channel_choices(
+    interaction: nextcord.Interaction, 
+    channel1: nextcord.TextChannel, 
+    channel2: nextcord.TextChannel = None
+):
     await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
         return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
 
-    allowed_ai_channels[interaction.guild.id] = channel.id
+    channels_list = [channel1.id]
+    channels_desc = f"• {channel1.mention}"
+    
+    if channel2:
+        channels_list.append(channel2.id)
+        channels_desc += f"\n• {channel2.mention}"
+
+    allowed_ai_channels[interaction.guild.id] = channels_list
+
     embed = nextcord.Embed(
         title="🌸 ตั้งค่าช่อง Frost AI สำเร็จแล้วค่ะ",
-        description=f"พูดคุยกับฟรอยด์ได้ที่ช่อง {channel.mention} เลยนะคะ!",
+        description=f"สามารถพูดคุยกับฟรอยด์ได้ที่ห้องเหล่านี้เลยนะคะ:\n{channels_desc}",
         color=nextcord.Color.pink()
     )
     await interaction.followup.send(embed=embed, ephemeral=True)
@@ -423,9 +436,7 @@ async def ai_chat_menu(interaction: nextcord.Interaction):
     await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 
-# ---------------------------------------------------------
-# คำสั่งพิมพ์เปลี่ยนโหมดแบบรวดเร็ว (ไม่ต้องใช้ปุ่ม)
-# ---------------------------------------------------------
+# คำสั่งพิมพ์เปลี่ยนโหมดแบบรวดเร็ว
 @bot.slash_command(name="ai-mode-polite", description="🌸 เปลี่ยน AI เป็นโหมดสุภาพทันที")
 async def set_mode_polite_cmd(interaction: nextcord.Interaction):
     await interaction.response.defer(ephemeral=True)
@@ -466,7 +477,7 @@ async def ai_ready(interaction: nextcord.Interaction, channel: nextcord.TextChan
 
 
 # ==========================================
-# 8. ระบบพูดคุยโต้ตอบกับ AI ตามโหมดที่เลือก
+# 8. ระบบพูดคุยโต้ตอบกับ AI ตามโหมดที่เลือก (รองรับหลายห้อง)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -474,9 +485,9 @@ async def on_message(message):
         return
 
     guild_id = message.guild.id
-    target_channel_id = allowed_ai_channels.get(guild_id)
+    allowed_channels = allowed_ai_channels.get(guild_id, [])
 
-    if target_channel_id and message.channel.id == target_channel_id:
+    if message.channel.id in allowed_channels:
         user_id = message.author.id
         current_time = time.time()
 
