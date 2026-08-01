@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (Clean Commands) is running!"
+    return "Frost AI Bot (Pure Auto Mode) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -30,23 +30,25 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 groq_client = Groq(api_key=groq_api_key)
 
-allowed_ai_channels = {}
-ai_modes = {} 
-log_channels = {}
+# กำหนดค่าห้องทำงานต่างๆ (สามารถปรับเปลี่ยน ID ช่องแชทตรงนี้ได้ตามต้องการเลยค่ะ)
+ALLOWED_AI_CHANNELS = [123456789012345678]  # ใส่ ID ห้องที่อนุญาตให้คุยกับ AI
+LOG_CHANNEL_ID = 123456789012345678       # ใส่ ID ห้องสำหรับส่ง Log ข้อความและสมาชิก
+
+ai_mode = "polite"  # โหมดเริ่มต้น ("polite" หรือ "toxic")
 user_cooldowns = {}
 pending_verifications = {}
 COOLDOWN_TIME = 3.0
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Clean Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - No Commands Mode)")
     
     if not check_unverified_users.is_running():
         check_unverified_users.start()
 
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ระบบ AI รองรับ 2 ช่องแชท 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ระบบ AI อัตโนมัติเต็มรูปแบบ 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
-    print("✅ บอทพร้อมทำงานแล้วค่ะ!")
+    print("✅ บอทพร้อมทำงานแบบไร้คำสั่งแล้วค่ะ!")
 
 
 # ==========================================
@@ -59,9 +61,8 @@ async def on_member_join(member):
         "join_time": datetime.now(timezone.utc)
     }
 
-    guild_id = member.guild.id
-    if guild_id in log_channels:
-        log_channel = member.guild.get_channel(log_channels[guild_id])
+    if LOG_CHANNEL_ID:
+        log_channel = member.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = nextcord.Embed(
                 title="📥 สมาชิกใหม่เข้าสู่เซิร์ฟเวอร์",
@@ -74,9 +75,8 @@ async def on_member_join(member):
 
 @bot.event
 async def on_member_remove(member):
-    guild_id = member.guild.id
-    if guild_id in log_channels:
-        log_channel = member.guild.get_channel(log_channels[guild_id])
+    if LOG_CHANNEL_ID:
+        log_channel = member.guild.get_channel(LOG_CHANNEL_ID)
         if log_channel:
             embed = nextcord.Embed(
                 title="📤 สมาชิกออกจากเซิร์ฟเวอร์",
@@ -136,336 +136,43 @@ async def before_check_unverified_users():
 # ==========================================
 @bot.event
 async def on_message_delete(message):
-    if message.author.bot or not message.guild:
+    if message.author.bot or not message.guild or not LOG_CHANNEL_ID:
         return
-    guild_id = message.guild.id
-    if guild_id in log_channels:
-        log_channel = message.guild.get_channel(log_channels[guild_id])
-        if log_channel:
-            embed = nextcord.Embed(
-                title="🗑️ ข้อความถูกลบ",
-                description=f"**ผู้ส่ง:** {message.author.mention}\n**ห้อง:** {message.channel.mention}\n**ข้อความ:**\n{message.content or '[ไม่มีข้อความ / รูปภาพ]'}",
-                color=nextcord.Color.orange()
-            )
-            embed.set_footer(text=f"Author ID: {message.author.id}")
-            await log_channel.send(embed=embed)
+    log_channel = message.guild.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
+        embed = nextcord.Embed(
+            title="🗑️ ข้อความถูกลบ",
+            description=f"**ผู้ส่ง:** {message.author.mention}\n**ห้อง:** {message.channel.mention}\n**ข้อความ:**\n{message.content or '[ไม่มีข้อความ / รูปภาพ]'}",
+            color=nextcord.Color.orange()
+        )
+        embed.set_footer(text=f"Author ID: {message.author.id}")
+        await log_channel.send(embed=embed)
 
 
 @bot.event
 async def on_message_edit(before, after):
-    if before.author.bot or not before.guild or before.content == after.content:
+    if before.author.bot or not before.guild or before.content == after.content or not LOG_CHANNEL_ID:
         return
-    guild_id = before.guild.id
-    if guild_id in log_channels:
-        log_channel = before.guild.get_channel(log_channels[guild_id])
-        if log_channel:
-            embed = nextcord.Embed(
-                title="✏️ ข้อความถูกแก้ไข",
-                description=f"**ผู้ส่ง:** {before.author.mention}\n**ห้อง:** {before.channel.mention}\n\n**ก่อนแก้:** {before.content}\n**หลังแก้:** {after.content}",
-                color=nextcord.Color.blue()
-            )
-            embed.set_footer(text=f"Author ID: {before.author.id}")
-            await log_channel.send(embed=embed)
-
-
-@bot.slash_command(name="set-log-channel", description="📊 กำหนดช่องสำหรับบันทึก Log กิจกรรมในเซิร์ฟเวอร์")
-async def set_log_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
-
-    log_channels[interaction.guild.id] = channel.id
-    embed = nextcord.Embed(
-        title="📊 ตั้งค่าช่อง Log สำเร็จแล้วค่ะ",
-        description=f"กิจกรรมทั้งหมดในเซิร์ฟเวอร์จะถูกบันทึกไว้ที่ห้อง {channel.mention} เรียบร้อยค่ะ!",
-        color=nextcord.Color.pink()
-    )
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-# ==========================================
-# 3. คำสั่ง /clear (ลบข้อความ)
-# ==========================================
-@bot.slash_command(name="clear", description="🧹 ลบข้อความที่ไม่เหมาะสมหรือไม่จำเป็นในห้องแชท")
-async def clear(interaction: nextcord.Interaction, amount: int = 10):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.manage_messages:
-        return await interaction.followup.send("❌ คุณไม่มีสิทธิ์ในการจัดการข้อความ (Manage Messages) ค่ะ", ephemeral=True)
-
-    if amount < 1 or amount > 100:
-        return await interaction.followup.send("❌ กรุณาระบุจำนวนข้อความที่ต้องการลบระหว่าง **1 ถึง 100** ข้อความนะคะ", ephemeral=True)
-
-    deleted = await interaction.channel.purge(limit=amount)
-    await interaction.followup.send(f"🧹 ทำการลบข้อความที่ไม่จำเป็นออก **{len(deleted)} ข้อความ** เรียบร้อยแล้วค่ะ!", ephemeral=True)
-
-
-# ==========================================
-# 4. ระบบปุ่มยืนยันตัวตน (Verification)
-# ==========================================
-class VerificationView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @nextcord.ui.button(label="✅ ยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button")
-    async def verify(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        role = nextcord.utils.get(interaction.guild.roles, name="Verified")
-        
-        if not role:
-            return await interaction.followup.send("❌ ยังไม่ได้สร้างยศชื่อ `Verified` ในเซิร์ฟเวอร์นี้ค่ะ รบกวนให้แอดมินสร้างยศก่อนน้า!", ephemeral=True)
-
-        if role in interaction.user.roles:
-            await interaction.followup.send("✨ คุณได้ทำการยืนยันตัวตนไปเรียบร้อยแล้วนะคะ!", ephemeral=True)
-        else:
-            await interaction.user.add_roles(role)
-            pending_verifications.pop(interaction.user.id, None)
-            await interaction.followup.send("🎉 ยืนยันตัวตนสำเร็จแล้วค่ะ! ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์นะคะ 💖", ephemeral=True)
-
-
-@bot.slash_command(name="setup-verification", description="🛡️ ส่งข้อความ, รูปภาพยืนยันตัวตน และปุ่มสำหรับสมาชิกใหม่")
-async def setup_verification(interaction: nextcord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
-
-    embed = nextcord.Embed(
-        title="🛡️ ยืนยันตัวตนเพื่อเข้าสู่เซิร์ฟเวอร์",
-        description="กรุณากดปุ่ม **'✅ ยืนยันตัวตน'** ด้านล่างนี้ภายใน **5 นาที** เพื่อรับยศและป้องกันการถูกเตะออกจากเซิร์ฟเวอร์ค่ะ!",
-        color=nextcord.Color.blurple()
-    )
-    embed.set_image(url="https://i.pinimg.com/1200x/19/b3/90/19b390db882386287fb4a5f4e7d4177e.jpg")
-    embed.set_footer(text="ระบบยืนยันตัวตนแบบอัตโนมัติ 🌸")
-
-    view = VerificationView()
-    await interaction.channel.send(embed=embed, view=view)
-    await interaction.followup.send("✅ สร้างระบบปุ่มยืนยันตัวตนและเปิดใช้งานระบบตรวจสอบ 5 นาทีเรียบร้อยแล้วค่ะ!", ephemeral=True)
-
-
-# ==========================================
-# 5. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown)
-# ==========================================
-class RoleSelect(nextcord.ui.Select):
-    def __init__(self):
-        options = [
-            nextcord.SelectOption(label="Gamer", description="สำหรับสายเล่นเกม", emoji="🎮", value="Gamer"),
-            nextcord.SelectOption(label="Announce", description="สำหรับรับข่าวสารประกาศ", emoji="📢", value="Announce"),
-            nextcord.SelectOption(label="Music Lover", description="สำหรับคนรักเสียงเพลง", emoji="🎵", value="Music Lover"),
-        ]
-        super().__init__(placeholder="📌 เลือกยศที่คุณต้องการที่นี่...", min_values=1, max_values=1, options=options, custom_id="role_select_menu")
-
-    async def callback(self, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        selected_role_name = self.values[0]
-        role = nextcord.utils.get(interaction.guild.roles, name=selected_role_name)
-
-        if not role:
-            return await interaction.followup.send(f"❌ ไม่พบยศชื่อ `{selected_role_name}` ในเซิร์ฟเวอร์นี้ รบกวนให้แอดมินสร้างยศนี้ก่อนนะคะ!", ephemeral=True)
-
-        if role in interaction.user.roles:
-            await interaction.user.remove_roles(role)
-            await interaction.followup.send(f"📤 ระบบได้ทำการถอดออกยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ", ephemeral=True)
-        else:
-            await interaction.user.add_roles(role)
-            await interaction.followup.send(f"📥 ระบบได้มอบยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ!", ephemeral=True)
-
-
-class RoleSelectView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(RoleSelect())
-
-
-@bot.slash_command(name="setup-selfroles", description="🏷️ ส่งเมนูดรอปดาวน์เลือกยศพร้อมรูปภาพ")
-async def setup_selfroles(interaction: nextcord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
-
-    embed = nextcord.Embed(
-        title="🏷️ ระบบเลือกยศด้วยตนเอง (Self-Roles)",
-        description="กดเลือกยศที่คุณสนใจจากเมนูดรอปดาวน์ด้านล่างนี้ได้เลยนะคะ!\n\n"
-                    "• 🎮 **Gamer** - สำหรับสายเล่นเกม\n"
-                    "• 📢 **Announce** - สำหรับรับข่าวสารประกาศ\n"
-                    "• 🎵 **Music Lover** - สำหรับคนรักเสียงเพลง",
-        color=nextcord.Color.purple()
-    )
-    embed.set_image(url="https://i.pinimg.com/736x/57/6b/75/576b75f28cd7812560fd2984e3af10c3.jpg")
-    embed.set_footer(text="เลือกซ้ำเพื่อถอดออก หรือเลือกเพื่อรับยศ 🌸")
-
-    view = RoleSelectView()
-    await interaction.channel.send(embed=embed, view=view)
-    await interaction.followup.send("✅ สร้างเมนูดรอปดาวน์เลือกยศในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
-
-
-# ==========================================
-# 6. ระบบ Tickets
-# ==========================================
-class CloseTicketView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @nextcord.ui.button(label="🔒 ปิดห้อง Ticket", style=nextcord.ButtonStyle.red, custom_id="close_ticket_btn")
-    async def close_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.send_message("🔒 กำลังปิดห้อง Ticket นี้ใน 5 วินาที...", ephemeral=False)
-        time.sleep(2)
-        await interaction.channel.delete()
-
-
-class TicketView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @nextcord.ui.button(label="🎫 เปิด Ticket (ติดต่อแอดมิน)", style=nextcord.ButtonStyle.primary, custom_id="create_ticket_btn")
-    async def create_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        guild = interaction.guild
-        member = interaction.user
-
-        existing_channel = nextcord.utils.get(guild.text_channels, name=f"ticket-{member.name.lower()}")
-        if existing_channel:
-            return await interaction.followup.send(f"❌ คุณมีห้อง Ticket เปิดไว้อยู่แล้วค่ะ: {existing_channel.mention}", ephemeral=True)
-
-        overwrites = {
-            guild.default_role: nextcord.PermissionOverwrite(view_channel=False),
-            member: nextcord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-            guild.me: nextcord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
-        }
-
-        ticket_channel = await guild.create_text_channel(
-            name=f"ticket-{member.name}",
-            overwrites=overwrites,
-            topic=f"Ticket ของคุณ {member.name} ({member.id})"
-        )
-
+    log_channel = before.guild.get_channel(LOG_CHANNEL_ID)
+    if log_channel:
         embed = nextcord.Embed(
-            title=f"🎫 Ticket ของคุณ {member.name}",
-            description="สวัสดีค่ะ! แจ้งปัญหาหรือเรื่องที่ต้องการติดต่อกับแอดมินไว้ได้เลยนะคะ\nแอดมินจะรีบเข้ามาช่วยเหลือโดยเร็วที่สุดค่ะ 🌸",
-            color=nextcord.Color.green()
+            title="✏️ ข้อความถูกแก้ไข",
+            description=f"**ผู้ส่ง:** {before.author.mention}\n**ห้อง:** {before.channel.mention}\n\n**ก่อนแก้:** {before.content}\n**หลังแก้:** {after.content}",
+            color=nextcord.Color.blue()
         )
-        embed.set_footer(text="กดปุ่มด้านล่างนี้เพื่อปิดห้องเมื่อเสร็จสิ้นธุระ")
-
-        view = CloseTicketView()
-        await ticket_channel.send(content=f"{member.mention} ยินดีต้อนรับสู่ Ticket ค่ะ!", embed=embed, view=view)
-        await interaction.followup.send(f"✨ สร้างห้อง Ticket ส่วนตัวให้คุณแล้วค่ะ: {ticket_channel.mention}", ephemeral=True)
-
-
-@bot.slash_command(name="setup-ticket", description="🎫 ส่งข้อความ, รูปภาพ Tickets และปุ่มเปิดห้องส่วนตัว")
-async def setup_ticket(interaction: nextcord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
-
-    embed = nextcord.Embed(
-        title="🎫 ศูนย์ช่วยเหลือและติดต่อแอดมิน (Tickets)",
-        description="หากคุณมีปัญหา ติดต่อสอบถาม หรือต้องการแจ้งเรื่องต่างๆ สามารถกดปุ่ม **'🎫 เปิด Ticket'** ด้านล่างนี้เพื่อสร้างห้องพูดคุยส่วนตัวกับทีมงานได้เลยค่ะ!",
-        color=nextcord.Color.gold()
-    )
-    embed.set_image(url="https://i.pinimg.com/1200x/ad/80/97/ad80973abc102722c5d27cb68bcd1363.jpg")
-    embed.set_footer(text="ระบบห้องส่วนตัวปลอดภัยและเป็นความลับ 🌸")
-
-    view = TicketView()
-    await interaction.channel.send(embed=embed, view=view)
-    await interaction.followup.send("✅ สร้างระบบ Tickets ในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+        embed.set_footer(text=f"Author ID: {before.author.id}")
+        await log_channel.send(embed=embed)
 
 
 # ==========================================
-# 7. ระบบตั้งค่าช่องคุยกับ AI (รองรับ 2 ช่องแชท)
-# ==========================================
-@bot.slash_command(name="set-ai-channel-choices", description="🌸 กำหนดช่องให้ Frost AI พูดคุยได้สูงสุด 2 ช่องแชทพร้อมกัน")
-async def set_ai_channel_choices(
-    interaction: nextcord.Interaction, 
-    channel1: nextcord.TextChannel, 
-    channel2: nextcord.TextChannel = None
-):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
-
-    channels_list = [channel1.id]
-    channels_desc = f"• {channel1.mention}"
-    
-    if channel2:
-        channels_list.append(channel2.id)
-        channels_desc += f"\n• {channel2.mention}"
-
-    allowed_ai_channels[interaction.guild.id] = channels_list
-
-    embed = nextcord.Embed(
-        title="🌸 ตั้งค่าช่อง Frost AI สำเร็จแล้วค่ะ",
-        description=f"สามารถพูดคุยกับฟรอยด์ได้ที่ห้องเหล่านี้เลยนะคะ:\n{channels_desc}",
-        color=nextcord.Color.pink()
-    )
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-
-# ปุ่มกดเลือกโหมด AI
-class AIModeSelectView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @nextcord.ui.button(label="🌸 โหมดสุภาพ (น่ารัก อ่อนหวาน)", style=nextcord.ButtonStyle.green, custom_id="ai_mode_polite_btn")
-    async def set_polite(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        ai_modes[interaction.guild.id] = "polite"
-        await interaction.followup.send("🌸 ตั้งค่า AI เป็น **'โหมดสุภาพ'** เรียบร้อยแล้วค่ะ! พร้อมต้อนรับด้วยความน่ารักสดใส ✨", ephemeral=True)
-
-    @nextcord.ui.button(label="😈 โหมดสายด่า / ปากแจ๋ว", style=nextcord.ButtonStyle.red, custom_id="ai_mode_toxic_btn")
-    async def set_toxic(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        ai_modes[interaction.guild.id] = "toxic"
-        await interaction.followup.send("😈 ตั้งค่า AI เป็น **'โหมดสายด่า / ปากแจ๋ว'** เรียบร้อยแล้วค่ะ! อยากด่า อยากเถียงจัดมาได้เลยสะใจแน่นอน 🔥", ephemeral=True)
-
-
-@bot.slash_command(name="ai-chat", description="⚙️ ส่งปุ่มเลือกโหมดการสนทนากับ AI")
-async def ai_chat_menu(interaction: nextcord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
-
-    current_mode = ai_modes.get(interaction.guild.id, "polite")
-    mode_text = "🌸 โหมดสุภาพ (น่ารัก)" if current_mode == "polite" else "😈 โหมดสายด่า / ปากแจ๋ว"
-
-    embed = nextcord.Embed(
-        title="🤖 ระบบเลือกโหมดสนทนากับ Frost AI",
-        description=f"สถานะโหมดปัจจุบันของเซิร์ฟเวอร์: **{mode_text}**\n\nกดปุ่มเลือกโหมดด้านล่างนี้ได้เลยค่ะ!",
-        color=nextcord.Color.purple()
-    )
-    
-    view = AIModeSelectView()
-    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-
-
-@bot.slash_command(name="ai-ready", description="🌸 ประกาศว่า Frost AI พร้อมใช้งานแล้วในช่องแชท")
-async def ai_ready(interaction: nextcord.Interaction, channel: nextcord.TextChannel = None):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
-    
-    target_channel = channel if channel else interaction.channel
-
-    embed = nextcord.Embed(
-        title="🌸 Frost AI พร้อมใช้งานแล้วงับ!",
-        description="ตอนนี้น้องฟรอยด์พร้อมคุยกับทุกคนแล้วนะคะ พิมพ์ทักทายหรือถามคำถามมาได้เลยงับ 💖",
-        color=nextcord.Color.pink()
-    )
-    embed.set_footer(text="ระบบ AI อัจฉริยะ 🌸")
-
-    await target_channel.send(embed=embed)
-    await interaction.followup.send(f"✅ ส่งข้อความประกาศ AI พร้อมใช้งานไปที่ {target_channel.mention} เรียบร้อยแล้วค่ะ!", ephemeral=True)
-
-
-# ==========================================
-# 8. ระบบพูดคุยโต้ตอบกับ AI ตามโหมดที่เลือก (รองรับหลายห้อง)
+# 3. ระบบพูดคุยโต้ตอบกับ AI อัตโนมัติ
 # ==========================================
 @bot.event
 async def on_message(message):
     if message.author.bot or not message.guild:
         return
 
-    guild_id = message.guild.id
-    allowed_channels = allowed_ai_channels.get(guild_id, [])
-
-    if message.channel.id in allowed_channels:
+    if message.channel.id in ALLOWED_AI_CHANNELS:
         user_id = message.author.id
         current_time = time.time()
 
@@ -480,9 +187,7 @@ async def on_message(message):
         user_cooldowns[user_id] = current_time
         user_message = message.content
 
-        current_mode = ai_modes.get(guild_id, "polite")
-
-        if current_mode == "toxic":
+        if ai_mode == "toxic":
             system_prompt = (
                 "คุณคือ AI สายปากแจ๋ว กวนโอ๊ย และพร้อมบวก ปากจัด ด่าเก่ง เถียงคำไม่ตกฟาก พูดจาหยาบคายได้นิดหน่อยตามฟีลเพื่อนเกรียนๆ "
                 "ชอบแซะ ชอบกวนประสาทคนที่ทักมา แต่ก็ยังให้ข้อมูลหรือตอบคำถามได้ปกติ ห้ามเรียบร้อยเด็ดขาด ต้องมีความกวนบาทาและดิบเถื่อนแบบวัยรุ่นสร้างตัว"
