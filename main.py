@@ -5,7 +5,7 @@ import os
 from flask import Flask
 from threading import Thread
 
-# --- ระบบเปิดเว็บจำลองสำหรับ Render ---
+# --- ระบบเปิดเว็บจำลองสำหรับ Render (ดึง Port อัตโนมัติ) ---
 app = Flask('')
 
 @app.route('/')
@@ -13,7 +13,9 @@ def home():
     return "Multi-System Bot is running!"
 
 def run():
-    app.run(host='0.0.0.0', port=8080)
+    # ดึง Port จาก Render โดยตรง ถ้าไม่มีให้ใช้ 8080
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run)
@@ -34,14 +36,12 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 async def change_status():
     server_count = len(bot.guilds)
     
-    # รายการข้อความที่จะสลับเปลี่ยนวนไปเรื่อยๆ
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
         discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
         discord.Game(name="พิมพ์ /ติดต่อแอดมิน เพื่อแจ้งปัญหา")
     ]
     
-    # สลับวนลูปข้อความ
     if not hasattr(change_status, "index"):
         change_status.index = 0
     
@@ -68,11 +68,10 @@ async def on_ready():
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
-    # เริ่มต้นใช้งานลูปเปลี่ยนสถานะ
     if not change_status.is_running():
         change_status.start()
         
-    print("✅ เริ่มระบบเปลี่ยนสถานะอัตโนมัติทุก 1 นาทีเรียบร้อยแล้วครับ")
+    print("✅ บอทออนไลน์และเริ่มระบบเปลี่ยนสถานะเรียบร้อยแล้วครับ")
 
 
 # ==========================================
@@ -283,5 +282,6 @@ async def ticket_command(
         ephemeral=True
     )
 
+# เปิดใช้งาน Web Server และรันบอท
 keep_alive()
 bot.run(token)
