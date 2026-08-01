@@ -23,7 +23,12 @@ def keep_alive():
     t.start()
 # ------------------------------------
 
+# --- ดึง Token จาก Environment Variable อย่างปลอดภัย ---
 token = os.environ.get("DISCORD_TOKEN")
+
+if not token:
+    print("❌ ERROR: ไม่พบ DISCORD_TOKEN กรุณาตั้งค่า Token ใน Environment Variables")
+    exit()
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -40,8 +45,8 @@ async def change_status():
     
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
-        discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
-        discord.Game(name="ระบบแปลภาษา & Token Checker พร้อมใช้งาน")
+        discord.Game(name="ระบบยืนยันตัวตน & HypeSquad พร้อมใช้งาน"),
+        discord.Game(name="ระบบแปลภาษา & Ticket พร้อมใช้งาน")
     ]
     
     if not hasattr(change_status, "index"):
@@ -58,6 +63,8 @@ async def on_ready():
     bot.add_view(PersistentVerifyView())
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
+    bot.add_view(HypeSquadView())
+    bot.add_view(TokenCheckerView())
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -311,42 +318,111 @@ async def checktoken_command(interaction: discord.Interaction):
 
 
 # ==========================================
-# 1. ระบบยืนยันตัวตน (Persistent View แบบใหม่)
+# 🏆 ระบบ HypeSquad Badges
+# ==========================================
+class HypeSquadSelect(discord.ui.Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="Bravery", description="สำหรับผู้กล้าหาญ (House of Bravery)", emoji="🟣", value="bravery"),
+            discord.SelectOption(label="Brilliance", description="สำหรับผู้ฉลาด (House of Brilliance)", emoji="🟠", value="brilliance"),
+            discord.SelectOption(label="Balance", description="สำหรับผู้สมดุล (House of Balance)", emoji="🟢", value="balance")
+        ]
+        super().__init__(placeholder="[ 🏆 เลือกบ้าน HypeSquad ที่ต้องการ ]", min_values=1, max_values=1, options=options, custom_id="hypesquad_select:dropdown")
+
+    async def callback(self, interaction: discord.Interaction):
+        house_name = self.values[0].capitalize()
+        embed = discord.Embed(
+            title=f"🏆 วิธีรับตรา HypeSquad: House of {house_name}",
+            description=(
+                f"คุณได้เลือกบ้าน **{house_name}** เรียบร้อยแล้ว!\n\n"
+                "📌 **วิธีรับตราในแอปพลิเคชัน Discord:**\n"
+                "1. ไปที่ **User Settings (ตั้งค่าผู้ใช้)** ของคุณ\n"
+                "2. เลื่อนหาเมนู **HypeSquad** (แถบด้านซ้ายล่าง)\n"
+                "3. กดปุ่ม **Join HypeSquad**\n"
+                f"4. เลือกบ้าน **{house_name}** เพื่อรับตราประดับโปรไฟล์ทันที!"
+            ),
+            color=0x2b2d31
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class HypeSquadView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(HypeSquadSelect())
+
+    @discord.ui.button(label="HypeSquad คืออะไร?", style=discord.ButtonStyle.primary, emoji="🟣", custom_id="hypesquad:what_is")
+    async def what_is_hypesquad(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            title="🟣 HypeSquad คืออะไร?",
+            description=(
+                "**HypeSquad** คือชุมชนผู้ใช้งาน Discord อย่างเป็นทางการ\n"
+                "เมื่อเข้าร่วม คุณจะได้รับ **Badge (ตราสัญลักษณ์)** พิเศษประดับไว้ที่โปรไฟล์ของคุณ\n"
+                "โดยแบ่งออกเป็น 3 บ้านหลัก:\n"
+                "• 🟣 **Bravery** (ความกล้าหาญ)\n"
+                "• 🟠 **Brilliance** (ความฉลาด)\n"
+                "• 🟢 **Balance** (ความสมดุล)"
+            ),
+            color=0x9b59b6
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="ลบตราออก", style=discord.ButtonStyle.danger, emoji="🔴", custom_id="hypesquad:remove")
+    async def remove_hypesquad(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            title="🔴 วิธีถอด / ลบตรา HypeSquad ออกจากโปรไฟล์",
+            description=(
+                "หากคุณต้องการถอดตรา HypeSquad ออก:\n"
+                "1. ไปที่ **User Settings (ตั้งค่าผู้ใช้)**\n"
+                "2. ไปที่เมนู **HypeSquad**\n"
+                "3. กดปุ่ม **Leave HypeSquad** ด้านล่างสุด ตราจะหายไปทันที"
+            ),
+            color=0xe74c3c
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@bot.tree.command(name="hypesquad", description="สร้างหน้าต่างระบบรับตรา HypeSquad Badges")
+@app_commands.describe(image="อัปโหลดรูปภาพแบนเนอร์ (ไม่บังคับ)", image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)")
+async def hypesquad_command(interaction: discord.Interaction, image: discord.Attachment = None, image_url: str = None):
+    embed = discord.Embed(
+        title="🏆 ระบบรับตรา HypeSquad Badges",
+        description=(
+            "🟣 **Bravery** - สำหรับผู้กล้าหาญ\n"
+            "🟠 **Brilliance** - สำหรับผู้ฉลาด\n"
+            "🟢 **Balance** - สำหรับผู้สมดุล"
+        ),
+        color=0x2b2d31
+    )
+    target_image = image.url if image else (image_url if image_url else "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg")
+    if target_image:
+        embed.set_image(url=target_image)
+    embed.set_footer(text="ICEWEN_2 : HYPESWAD SYSTEM")
+
+    await interaction.channel.send(embed=embed, view=HypeSquadView())
+    await interaction.response.send_message("✅ ส่งหน้าต่าง HypeSquad เรียบร้อยแล้วครับ", ephemeral=True)
+
+
+# ==========================================
+# 1. ระบบยืนยันตัวตน (Persistent View)
 # ==========================================
 class PersistentVerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # ปุ่มที่ 1: ยืนยันตัวตน (ให้ยศและแสดงหน้าต่างสำเร็จ)
-    @discord.ui.button(
-        label="ยืนยันตัวตน",
-        style=discord.ButtonStyle.success,
-        emoji="🌳",
-        custom_id="persistent_verify:button"
-    )
+    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.success, emoji="🌳", custom_id="persistent_verify:button")
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
         role = discord.utils.get(interaction.guild.roles, name="Verified") or discord.utils.get(interaction.guild.roles, name="Member")
         
         if not role:
-            return await interaction.response.send_message(
-                "❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ (กรุณาตั้งชื่อยศว่า 'Verified' หรือ 'Member' ในเซิร์ฟเวอร์)",
-                ephemeral=True
-            )
+            return await interaction.response.send_message("❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ (ตั้งชื่อยศ 'Verified' หรือ 'Member')", ephemeral=True)
 
         if role in interaction.user.roles:
-            return await interaction.response.send_message(
-                "❌ คุณได้ทำการยืนยันตัวตนไปแล้ว",
-                ephemeral=True
-            )
+            return await interaction.response.send_message("❌ คุณได้ทำการยืนยันตัวตนไปแล้ว", ephemeral=True)
 
         await interaction.user.add_roles(role)
         
-        # สร้าง Embed หน้าต่างสำเร็จ (VERIFY SUCCEEDED)
-        success_embed = discord.Embed(
-            title="✅ VERIFY SUCCEEDED",
-            color=0x2ecc71,
-            timestamp=datetime.utcnow()
-        )
+        success_embed = discord.Embed(title="✅ VERIFY SUCCEEDED", color=0x2ecc71, timestamp=datetime.utcnow())
         success_embed.add_field(name="⭐ USER", value=f"{interaction.user.mention}", inline=False)
         success_embed.add_field(name="🥟 USERID", value=f"`{interaction.user.id}`", inline=False)
         success_embed.add_field(name="🚀 ROLE", value=f"{role.mention}", inline=False)
@@ -354,13 +430,7 @@ class PersistentVerifyView(discord.ui.View):
 
         await interaction.response.send_message(embed=success_embed, ephemeral=True)
 
-    # ปุ่มที่ 2: คู่มือการยืนยันตัวตน
-    @discord.ui.button(
-        label="คู่มือการยืนยันตัวตน",
-        style=discord.ButtonStyle.secondary,
-        emoji="🎄",
-        custom_id="persistent_verify:guide"
-    )
+    @discord.ui.button(label="คู่มือการยืนยันตัวตน", style=discord.ButtonStyle.secondary, emoji="🎄", custom_id="persistent_verify:guide")
     async def guide_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         guide_embed = discord.Embed(
             title="📖 | คู่มือการยืนยันตัวตน",
@@ -370,80 +440,47 @@ class PersistentVerifyView(discord.ui.View):
         await interaction.response.send_message(embed=guide_embed, ephemeral=True)
 
 
-@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนแบบใหม่ดีไซน์ Cinnamoroll")
-@app_commands.describe(
-    role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับ",
-    image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)",
-    image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)",
-    url_link="ใส่ลิงก์เว็บไซต์สำหรับปุ่ม why? (ไม่บังคับ)"
-)
-async def verify_command(
-    interaction: discord.Interaction, 
-    role: discord.Role, 
-    image: discord.Attachment = None,
-    image_url: str = None,
-    url_link: str = "https://your-link-here.com"
-):
+@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนแบบใหม่ดีไซน์น่ารัก")
+@app_commands.describe(role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับ", image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)", image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)", url_link="ใส่ลิงก์เว็บไซต์สำหรับปุ่ม why? (ไม่บังคับ)")
+async def verify_command(interaction: discord.Interaction, role: discord.Role, image: discord.Attachment = None, image_url: str = None, url_link: str = "https://your-link-here.com"):
     embed = discord.Embed(
         description=(
             "+  . ✦ 🐈‍⬛ ' **ระบบยืนยันตัวตน**\n\n"
-            "+  . ✦ 🐉 ' ยืนยันตน ✨ <u>ง่ายๆ</u> ✨ ระบบคุณภาพ\n"
+            "+  . ✦ 🐉 ' ยืนยันตน ✨ ง่ายๆ ✨ ระบบคุณภาพ\n"
             f"+  . ✦ 🐑 ' ยืนยันแล้วจะได้รับบทบาท 👑 {role.mention} 👑\n"
-            "+  . ✦ 🐉 ' ยืนยันไม่กี่ ⚡ <u>ขั้นตอน</u> ⚡ ก็ได้รับบทบาท\n"
-            "+  . ✦ 🐰 ' มีคู่มือการใช้งานระบบแบบ 📚 <u>ละเอียด</u> 📚"
+            "+  . ✦ 🐉 ' ยืนยันไม่กี่ ⚡ ขั้นตอน ⚡ ก็ได้รับบทบาท\n"
+            "+  . ✦ 🐰 ' มีคู่มือการใช้งานระบบแบบ 📚 ละเอียด 📚"
         ),
         color=0x2b2d31
     )
 
-    # กำหนดรูปภาพแบนเนอร์ (ถ้าไม่ได้เลือกไฟล์หรือใส่ลิงก์มา จะใช้รูปค่าเริ่มต้น Cinnamoroll ทันที)
     target_image = image.url if image else (image_url if image_url else "https://i.ibb.co/QcHHS4H/Discord.png")
     if target_image:
         embed.set_image(url=target_image)
 
-    # สร้าง View และเพิ่มปุ่มลิงก์ภายนอก why? ตามที่คุณต้องการ
     view = PersistentVerifyView()
-    url_button = discord.ui.Button(
-        label="why?", 
-        emoji="🌲", 
-        style=discord.ButtonStyle.link, 
-        url=url_link
-    )
+    url_button = discord.ui.Button(label="why?", emoji="🌲", style=discord.ButtonStyle.link, url=url_link)
     view.add_item(url_button)
 
-    await interaction.channel.send(
-        embed=embed,
-        view=view
-    )
-
-    await interaction.response.send_message(
-        "✅ สร้างหน้าต่างยืนยันตัวตนเรียบร้อยครับ",
-        ephemeral=True
-    )
+    await interaction.channel.send(embed=embed, view=view)
+    await interaction.response.send_message("✅ สร้างหน้าต่างยืนยันตัวตนเรียบร้อยครับ", ephemeral=True)
 
 
 # ==========================================
-# 2. ระบบ Ticket รันเลขเริ่มต้นจาก 1 พร้อมหมวดหมู่ (Persistent View)
+# 2. ระบบ Ticket (Persistent View)
 # ==========================================
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="สอบถาม/แจ้งปัญหา",
-        style=discord.ButtonStyle.success,
-        emoji="📩",
-        custom_id="persistent_ticket:button"
-    )
+    @discord.ui.button(label="สอบถาม/แจ้งปัญหา", style=discord.ButtonStyle.success, emoji="📩", custom_id="persistent_ticket:button")
     async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         user = interaction.user
 
         for channel in guild.text_channels:
             if channel.topic and f"ID: {user.id}" in channel.topic:
-                return await interaction.response.send_message(
-                    f"❌ คุณมีห้องติดต่อแอดมินเปิดอยู่แล้วครับ: {channel.mention}",
-                    ephemeral=True
-                )
+                return await interaction.response.send_message(f"❌ คุณมีห้องติดต่อแอดมินเปิดอยู่แล้วครับ: {channel.mention}", ephemeral=True)
 
         category_name = "🎫 TICKETS"
         category = discord.utils.get(guild.categories, name=category_name)
@@ -481,22 +518,14 @@ class TicketView(discord.ui.View):
         close_view = CloseTicketView()
         await ticket_channel.send(content=f"{user.mention}", embed=embed, view=close_view)
 
-        await interaction.response.send_message(
-            f"✅ สร้างห้องติดต่อแอดมินให้แล้วครับ: {ticket_channel.mention}",
-            ephemeral=True
-        )
+        await interaction.response.send_message(f"✅ สร้างห้องติดต่อแอดมินให้แล้วครับ: {ticket_channel.mention}", ephemeral=True)
 
 
 class CloseTicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="ปิด Ticket",
-        style=discord.ButtonStyle.danger,
-        emoji="🔒",
-        custom_id="persistent_close_ticket:button"
-    )
+    @discord.ui.button(label="ปิด Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="persistent_close_ticket:button")
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("🔒 กำลังปิดห้องนี้ใน 3 วินาที...", ephemeral=True)
         import asyncio
@@ -505,15 +534,8 @@ class CloseTicketView(discord.ui.View):
 
 
 @bot.tree.command(name="ติดต่อแอดมิน", description="สร้างระบบติดต่อแอดมิน / แจ้งปัญหา (Ticket)")
-@app_commands.describe(
-    image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)",
-    image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)"
-)
-async def ticket_command(
-    interaction: discord.Interaction,
-    image: discord.Attachment = None,
-    image_url: str = None
-):
+@app_commands.describe(image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)", image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)")
+async def ticket_command(interaction: discord.Interaction, image: discord.Attachment = None, image_url: str = None):
     embed = discord.Embed(
         title="ติดต่อแอดมิน/แจ้งปัญหาได้ที่นี่",
         description=(
@@ -537,15 +559,8 @@ async def ticket_command(
 
     embed.set_footer(text="Powered by Custom Bot")
 
-    await interaction.channel.send(
-        embed=embed,
-        view=TicketView()
-    )
-
-    await interaction.response.send_message(
-        "✅ ส่งหน้าต่างติดต่อแอดมินเรียบร้อยครับ",
-        ephemeral=True
-    )
+    await interaction.channel.send(embed=embed, view=TicketView())
+    await interaction.response.send_message("✅ ส่งหน้าต่างติดต่อแอดมินเรียบร้อยครับ", ephemeral=True)
 
 # เปิดใช้งาน Web Server และรันบอท
 keep_alive()
