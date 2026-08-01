@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets + Auto-Kick + Clear + Log + Security) is running!"
+    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets + Auto-Kick + Clear + Log + Ready Announce) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -367,7 +367,7 @@ async def setup_ticket(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 7. ระบบตั้งค่าช่องคุยกับ Frost AI
+# 7. ระบบตั้งค่าช่องคุยกับ Frost AI และ ประกาศว่าพร้อมทำงาน
 # ==========================================
 @bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
 async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
@@ -382,6 +382,24 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
         color=nextcord.Color.pink()
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# ---> เพิ่มคำสั่ง /ai-ready ตามที่คุณขอ <---
+@bot.slash_command(name="ai-ready", description="🌸 ประกาศว่า Frost AI พร้อมใช้งานแล้วในช่องแชท")
+async def ai_ready(interaction: nextcord.Interaction, channel: nextcord.TextChannel = None):
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+    
+    target_channel = channel if channel else interaction.channel
+
+    embed = nextcord.Embed(
+        title="🌸 Frost AI พร้อมใช้งานแล้วงับ!",
+        description="ตอนนี้น้องฟรอยด์พร้อมคุยกับทุกคนแล้วนะคะ พิมพ์ทักทายหรือถามคำถามมาได้เลยงับ 💖\nคอยดูแลทั้งระบบความปลอดภัยและตอบคำถามอย่างเต็มที่เลยค่ะ!",
+        color=nextcord.Color.pink()
+    )
+    embed.set_footer(text="ระบบ AI อัจฉริยะ 🌸")
+
+    await target_channel.send(embed=embed)
+    await interaction.response.send_message(f"✅ ส่งข้อความประกาศ AI พร้อมใช้งานไปที่ {target_channel.mention} เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
