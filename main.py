@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI + Verification + Self-Roles with Image) is running!"
+    return "Frost AI Bot (AI + Verification + Dropdown Roles with Image) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -38,10 +38,10 @@ COOLDOWN_TIME = 3.0  # กำหนดให้รอ 3 วินาทีก่
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Image & Roles Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Dropdown Role Mode)")
 
     # ตั้งค่าสถานะบอท
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลระบบยืนยันตัวตนและยศ 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ระบบยืนยันตัวตนและเลือกยศ 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
     print("✅ ตั้งค่าสถานะบอทสำเร็จแล้วค่ะ!")
 
@@ -77,7 +77,6 @@ async def setup_verification(interaction: nextcord.Interaction):
         description="กรุณากดปุ่ม **'✅ ยืนยันตัวตน'** ด้านล่างนี้ เพื่อรับยศและปลดล็อกห้องพูดคุยทั้งหมดภายในเซิร์ฟเวอร์ของเราค่ะ!",
         color=nextcord.Color.blurple()
     )
-    # แนบรูปภาพตามที่คุณต้องการ
     embed.set_image(url="https://i.pinimg.com/1200x/d8/6e/2d/d86e2d258fe8b6f6790cfa9c3c8e8105.jpg")
     embed.set_footer(text="ระบบยืนยันตัวตนแบบรวดเร็วและปลอดภัย 🌸")
 
@@ -87,57 +86,57 @@ async def setup_verification(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 2. ระบบเลือกยศด้วยปุ่ม (พร้อมแนบรูปภาพ)
+# 2. ระบบเลือกยศแบบเมนูเลือกลงมา (Role Dropdown Select Menu)
 # ==========================================
-class SelfRoleView(nextcord.ui.View):
+class RoleSelect(nextcord.ui.Select):
     def __init__(self):
-        super().__init__(timeout=None)
+        options = [
+            nextcord.SelectOption(label="Gamer", description="สำหรับสายเล่นเกม", emoji="🎮", value="Gamer"),
+            nextcord.SelectOption(label="Announce", description="สำหรับรับข่าวสารประกาศ", emoji="📢", value="Announce"),
+            nextcord.SelectOption(label="Music Lover", description="สำหรับคนรักเสียงเพลง", emoji="🎵", value="Music Lover"),
+        ]
+        super().__init__(placeholder="📌 เลือกยศที่คุณต้องการที่นี่...", min_values=1, max_values=1, options=options, custom_id="role_select_menu")
 
-    @nextcord.ui.button(label="🎮 Gamer", style=nextcord.ButtonStyle.primary, custom_id="role_gamer")
-    async def role_gamer(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await self.toggle_role(interaction, "Gamer")
+    async def callback(self, interaction: nextcord.Interaction):
+        selected_role_name = self.values[0]
+        role = nextcord.utils.get(interaction.guild.roles, name=selected_role_name)
 
-    @nextcord.ui.button(label="📢 Announce", style=nextcord.ButtonStyle.secondary, custom_id="role_announce")
-    async def role_announce(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await self.toggle_role(interaction, "Announce")
-
-    @nextcord.ui.button(label="🎵 Music Lover", style=nextcord.ButtonStyle.success, custom_id="role_music")
-    async def role_music(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await self.toggle_role(interaction, "Music Lover")
-
-    async def toggle_role(self, interaction: nextcord.Interaction, role_name: str):
-        role = nextcord.utils.get(interaction.guild.roles, name=role_name)
         if not role:
-            return await interaction.response.send_message(f"❌ ไม่พบยศชื่อ `{role_name}` ในเซิร์ฟเวอร์นี้ รบกวนให้แอดมินสร้างยศนี้ก่อนนะคะ!", ephemeral=True)
+            return await interaction.response.send_message(f"❌ ไม่พบยศชื่อ `{selected_role_name}` ในเซิร์ฟเวอร์นี้ รบกวนให้แอดมินสร้างยศนี้ก่อนนะคะ!", ephemeral=True)
 
         if role in interaction.user.roles:
             await interaction.user.remove_roles(role)
-            await interaction.response.send_message(f"📤 เอาออกยศ **{role_name}** ให้เรียบร้อยแล้วค่ะ", ephemeral=True)
+            await interaction.response.send_message(f"📤 ระบบได้ทำการถอดออกยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ", ephemeral=True)
         else:
             await interaction.user.add_roles(role)
-            await interaction.response.send_message(f"📥 มอบยศ **{role_name}** ให้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+            await interaction.response.send_message(f"📥 ระบบได้มอบยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
-@bot.slash_command(name="setup-selfroles", description="🏷️ สร้างเมนูปุ่มกดเลือกยศด้วยตัวเองพร้อมรูปภาพ")
+class RoleSelectView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(RoleSelect())
+
+
+@bot.slash_command(name="setup-selfroles", description="🏷️ ส่งเมนูดรอปดาวน์เลือกยศพร้อมรูปภาพ")
 async def setup_selfroles(interaction: nextcord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
 
     embed = nextcord.Embed(
         title="🏷️ ระบบเลือกยศด้วยตนเอง (Self-Roles)",
-        description="กดปุ่มด้านล่างนี้เพื่อ **รับ หรือ ถอด** ยศความสนใจได้ด้วยตัวเองเลยค่ะ!\n\n"
+        description="กดเลือกยศที่คุณสนใจจากเมนูดรอปดาวน์ด้านล่างนี้ได้เลยนะคะ!\n\n"
                     "• 🎮 **Gamer** - สำหรับสายเล่นเกม\n"
                     "• 📢 **Announce** - สำหรับรับข่าวสารประกาศ\n"
                     "• 🎵 **Music Lover** - สำหรับคนรักเสียงเพลง",
         color=nextcord.Color.purple()
     )
-    # แนบรูปภาพเดียวกันหรือรูปตกแต่งสวยๆ
     embed.set_image(url="https://i.pinimg.com/1200x/d8/6e/2d/d86e2d258fe8b6f6790cfa9c3c8e8105.jpg")
-    embed.set_footer(text="กดซ้ำเพื่อถอดออก หรือกดเพื่อรับยศ 🌸")
+    embed.set_footer(text="เลือกซ้ำเพื่อถอดออก หรือเลือกเพื่อรับยศ 🌸")
 
-    view = SelfRoleView()
+    view = RoleSelectView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างเมนูปุ่มเลือกยศพร้อมรูปภาพในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.response.send_message("✅ สร้างเมนูดรอปดาวน์เลือกยศพร้อมรูปภาพในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
