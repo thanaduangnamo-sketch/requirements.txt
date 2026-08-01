@@ -31,11 +31,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    # ลงทะเบียน Persistent Views ให้ปุ่มยังใช้งานได้หลังบอทรีสตาร์ท
     bot.add_view(PersistentVerifyView())
     bot.add_view(TicketView())
     
-    print(f"Logged in as {bot.user.name} (Verify & Ticket Persistent Mode)")
+    print(f"Logged in as {bot.user.name} (Category Ticket Mode)")
     
     try:
         synced = await bot.tree.sync()
@@ -65,11 +64,9 @@ class PersistentVerifyView(discord.ui.View):
         custom_id="persistent_verify:button"
     )
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ค้นหายศในเซิร์ฟเวอร์จากชื่อยศมาตรฐาน หรือจะตั้งค่าตามต้องการ
         role = discord.utils.get(interaction.guild.roles, name="Verified") or discord.utils.get(interaction.guild.roles, name="Member")
         
         if not role:
-            # หากหาไม่เจอ ให้หายศแรกสุดที่เป็นยศแจก หรือแจ้งเตือนให้แอดมินตั้งชื่อยศให้ตรงกัน
             return await interaction.response.send_message(
                 "❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ (กรุณาตั้งชื่อยศว่า 'Verified' หรือ 'Member' ในเซิร์ฟเวอร์)",
                 ephemeral=True
@@ -109,7 +106,7 @@ async def verify_command(
             "└─────────────────────────────┘\n"
             "\u001b[0m```\n"
             "☘️ เพื่อรับสิทธิ์ในการใช้งานและพูดคุย\n"
-            "🍀 กรุณากดปุ่มด้านล่างเพื่อ **ยืนยันตัวตน**\n\n"
+            "🍀 กรุณากกดปุ่มด้านล่างเพื่อ **ยืนยันตัวตน**\n\n"
             f"» ยศที่คุณจะได้รับคือ: {role.mention}\n\n"
             "```ansi\n"
             "\u001b[32m┌─────────── •°·.•°- ───────────┐\n"
@@ -124,7 +121,6 @@ async def verify_command(
     if target_image:
         embed.set_image(url=target_image)
 
-    # ส่งข้อความพร้อมติด View แบบ Persistent
     await interaction.channel.send(
         embed=embed,
         view=PersistentVerifyView()
@@ -137,7 +133,7 @@ async def verify_command(
 
 
 # ==========================================
-# 2. ระบบ Ticket ติดต่อแอดมิน (Persistent View)
+# 2. ระบบ Ticket รันเลขเริ่มต้นจาก 1 พร้อมหมวดหมู่ (Persistent View)
 # ==========================================
 class TicketView(discord.ui.View):
     def __init__(self):
@@ -153,12 +149,29 @@ class TicketView(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        existing_channel = discord.utils.get(guild.text_channels, name=f"ticket-{user.name.lower()}")
-        if existing_channel:
-            return await interaction.response.send_message(
-                f"❌ คุณมีห้องติดต่อแอดมินเปิดอยู่แล้วครับ: {existing_channel.mention}",
-                ephemeral=True
-            )
+        # ตรวจสอบว่าผู้ใช้เปิดตั๋วค้างไว้แล้วหรือยัง
+        for channel in guild.text_channels:
+            if channel.topic and f"ID: {user.id}" in channel.topic:
+                return await interaction.response.send_message(
+                    f"❌ คุณมีห้องติดต่อแอดมินเปิดอยู่แล้วครับ: {channel.mention}",
+                    ephemeral=True
+                )
+
+        # ค้นหาหรือสร้างหมวดหมู่ (Category) ชื่อ "🎫 TICKETS"
+        category_name = "🎫 TICKETS"
+        category = discord.utils.get(guild.categories, name=category_name)
+        if not category:
+            category = await guild.create_category(category_name)
+
+        # ค้นหาเลข Ticket ถัดไป (นับจากห้องในหมวดหมู่ หรือห้องทั้งหมดที่ขึ้นต้นด้วย ticket-)
+        existing_tickets = [c for c in guild.text_channels if c.name.startswith("ticket-")]
+        ticket_numbers = []
+        for c in existing_tickets:
+            parts = c.name.split("-")
+            if len(parts) > 1 and parts[1].isdigit():
+                ticket_numbers.append(int(parts[1]))
+
+        next_number = 1 if not ticket_numbers else max(ticket_numbers) + 1
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -166,14 +179,16 @@ class TicketView(discord.ui.View):
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
+        # สร้างห้องไว้ในหมวดหมู่ที่เตรียมไว้
         ticket_channel = await guild.create_text_channel(
-            name=f"ticket-{user.name}",
+            name=f"ticket-{next_number}",
+            category=category,
             overwrites=overwrites,
-            topic=f"Ticket ของคุณ {user.name} (ID: {user.id})"
+            topic=f"Ticket #{next_number} ของคุณ {user.name} (ID: {user.id})"
         )
 
         embed = discord.Embed(
-            title="📩 เปิด Ticket สำเร็จ",
+            title=f"📩 เปิด Ticket #{next_number} สำเร็จ",
             description=f"สวัสดีครับคุณ {user.mention} แจ้งรายละเอียดปัญหาหรือเรื่องที่ต้องการติดต่อแอดมินไว้ได้เลยครับ ทีมงานจะรีบเข้ามาช่วยเหลือโดยเร็วที่สุด!",
             color=0x2b2d31
         )
