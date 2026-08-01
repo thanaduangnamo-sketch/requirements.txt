@@ -1,17 +1,18 @@
 import nextcord
-from nextcord.ext import commands
+from nextcord.ext import commands, tasks
 import os
 from flask import Flask
 from threading import Thread
 from groq import Groq
 import time
+from datetime import datetime, timezone, timedelta
 
 # --- ระบบเปิดเว็บจำลองสำหรับ Render (แก้ปัญหา Port scan timeout) ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets) is running!"
+    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets + Auto-Kick) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -24,30 +25,104 @@ def keep_alive():
 token = os.environ.get("DISCORD_TOKEN")
 groq_api_key = os.environ.get("GROQ_API_KEY")
 
-# เปิด Intents ทั้งหมด
+# เปิด Intents ทั้งหมด (ต้องเปิด Intents.members ด้วยเพื่อให้ระบบจับเวลาคนเข้าเซิร์ฟเวอร์ทำงานได้)
 intents = nextcord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ตั้งค่า Groq Client
 groq_client = Groq(api_key=groq_api_key)
 
-# ตัวแปรเก็บข้อมูลช่อง AI และระบบป้องกันสแปม (Cooldown)
+# ตัวแปรเก็บข้อมูลช่อง AI, ระบบป้องกันสแปม (Cooldown) และเก็บเวลาสมาชิกเข้าเซิร์ฟเวอร์
 allowed_ai_channels = {}
 user_cooldowns = {}
+pending_verifications = {} # เก็บข้อมูลสมาชิกที่รอการยืนยันตัวตน
 COOLDOWN_TIME = 3.0  # กำหนดให้รอ 3 วินาทีก่อนคุยใหม่
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Full Features Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Auto-Kick Mode)")
+    
+    # เริ่มต้น Loop ตรวจสอบเวลา 5 นาที
+    if not check_unverified_users.is_running():
+        check_unverified_users.start()
 
     # ตั้งค่าสถานะบอท
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลระบบยืนยันตัวตน ยศ และ Tickets 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลความปลอดภัยและระบบยืนยันตัวตน 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
-    print("✅ ตั้งค่าสถานะบอทสำเร็จแล้วค่ะ!")
+    print("✅ ตั้งค่าสถานะบอทและระบบ Auto-Kick สำเร็จแล้วค่ะ!")
 
 
 # ==========================================
-# 1. ระบบปุ่มยืนยันตัวตน (พร้อมรูปภาพใหม่)
+# 1. ระบบดักจับสมาชิกใหม่เข้าเซิร์ฟเวอร์
+# ==========================================
+@bot.event
+async def on_member_join(member):
+    # บันทึกเวลาที่สมาชิกเข้ามา (ใช้เวลา UTC ปัจจุบัน)
+    pending_verifications[member.id] = {
+        "guild": member.guild,
+        "join_time": datetime.now(timezone.utc)
+    }
+
+
+# ==========================================
+# 2. ระบบ Background Task ตรวจสอบ 5 นาที & เตะออก
+# ==========================================
+@tasks.loop(seconds=30) # วนลูปเช็กทุกๆ 30 วินาที
+async def check_unverified_users():
+    # ตรวจสอบว่ามีการติดตั้งระบบปุ่มยืนยันตัวตนในบอทหรือยัง (เช็กจาก View หรือคำสั่ง setup)
+    # ถ้ายังไม่มีการตั้งค่า Verified Role หรือไม่มีคนกด setup ระบบจะไม่เตะ
+    current_time = datetime.now(timezone.utc)
+    to_remove = []
+
+    for member_id, data in list(pending_verifications.items()):
+        guild = data["guild"]
+        join_time = data["join_time"]
+
+        # ค้นหายศ Verified ในเซิร์ฟเวอร์
+        verified_role = nextcord.utils.get(guild.roles, name="Verified")
+        if not verified_role:
+            continue # ถ้ายังไม่ได้สร้างยศ Verified ข้ามการตรวจสอบไปก่อน (ตามเงื่อนไข: ถ้าไม่กุยืนยันตัวตนในดิสไม่เตะ)
+
+        member = guild.get_member(member_id)
+        if not member:
+            # ถ้าหาตัวไม่พบ (ออกจากเซิร์ฟเวอร์ไปเองแล้ว) ให้ลบออกจากรายการรอ
+            to_remove.append(member_id)
+            continue
+
+        # ถ้าสมาชิกยืนยันตัวตนแล้ว (มีสวมยศ Verified แล้ว) ให้เอาออกจากรายการรอ
+        if verified_role in member.roles:
+            to_remove.append(member_id)
+            continue
+
+        # คำนวณเวลาว่าเกิน 5 นาทีหรือยัง (300 วินาที)
+        elapsed_seconds = (current_time - join_time).total_seconds()
+        if elapsed_seconds >= 300: # 5 นาที
+            try:
+                # ส่งข้อความไปบอกส่วนตัว (DM) ก่อนเตะ
+                try:
+                    await member.send(f"⚠️ สวัสดีค่ะคุณ {member.name} เนื่องจากคุณไม่ได้ทำการกด **'ยืนยันตัวตน'** ภายในเวลา 5 นาทีที่กำหนด ระบบจึงขออนุญาตเชิญคุณออกจากเซิร์ฟเวอร์ **{guild.name}** ก่อนนะคะ สามารถกดลิงก์เชิญกลับเข้ามาใหม่และยืนยันตัวตนได้เสมอนะคะ 🌸")
+                except:
+                    pass # เผื่อกรณีที่สมาชิกปิดรับ DM จากบอท
+
+                # ทำการเตะ (Kick) สมาชิกออกจากเซิร์ฟเวอร์
+                await guild.kick(member, reason="ไม่ยืนยันตัวตนภายในเวลา 5 นาที")
+                print(f"👢 เตะสมาชิก {member.name} ออกจากเซิร์ฟเวอร์ {guild.name} เรียบร้อยแล้ว (เนื่องจากไม่ยืนยันตัวตน)")
+            except Exception as e:
+                print(f"❌ เกิดข้อผิดพลาดในการเตะสมาชิก: {e}")
+            
+            to_remove.append(member_id)
+
+    # ลบรายชื่อที่จัดการเสร็จแล้วออกจากตัวแปร
+    for member_id in to_remove:
+        pending_verifications.pop(member_id, None)
+
+@check_unverified_users.before_loop
+async def before_check_unverified_users():
+    await bot.wait_until_ready()
+
+
+# ==========================================
+# 3. ระบบปุ่มยืนยันตัวตน (พร้อมรูปภาพใหม่)
 # ==========================================
 class VerificationView(nextcord.ui.View):
     def __init__(self):
@@ -64,6 +139,8 @@ class VerificationView(nextcord.ui.View):
             await interaction.response.send_message("✨ คุณได้ทำการยืนยันตัวตนไปเรียบร้อยแล้วนะคะ!", ephemeral=True)
         else:
             await interaction.user.add_roles(role)
+            # เอาออกจากรายชื่อรอเตะทันทีเมื่อยืนยันสำเร็จ
+            pending_verifications.pop(interaction.user.id, None)
             await interaction.response.send_message("🎉 ยืนยันตัวตนสำเร็จแล้วค่ะ! ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์นะคะ 💖", ephemeral=True)
 
 
@@ -74,20 +151,20 @@ async def setup_verification(interaction: nextcord.Interaction):
 
     embed = nextcord.Embed(
         title="🛡️ ยืนยันตัวตนเพื่อเข้าสู่เซิร์ฟเวอร์",
-        description="กรุณากดปุ่ม **'✅ ยืนยันตัวตน'** ด้านล่างนี้ เพื่อรับยศและปลดล็อกห้องพูดคุยทั้งหมดภายในเซิร์ฟเวอร์ของเราค่ะ!",
+        description="กรุณากดปุ่ม **'✅ ยืนยันตัวตน'** ด้านล่างนี้ภายใน **5 นาที** เพื่อรับยศและป้องกันการถูกเตะออกจากเซิร์ฟเวอร์ค่ะ!",
         color=nextcord.Color.blurple()
     )
-    # รูปภาพใหม่สำหรับยืนยันตัวตนตามที่คุณขอ
+    # รูปภาพใหม่สำหรับยืนยันตัวตน
     embed.set_image(url="https://i.pinimg.com/1200x/19/b3/90/19b390db882386287fb4a5f4e7d4177e.jpg")
-    embed.set_footer(text="ระบบยืนยันตัวตนแบบรวดเร็วและปลอดภัย 🌸")
+    embed.set_footer(text="ระบบยืนยันตัวตนแบบอัตโนมัติ 🌸")
 
     view = VerificationView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างระบบปุ่มยืนยันตัวตนในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.response.send_message("✅ สร้างระบบปุ่มยืนยันตัวตนและเปิดใช้งานระบบตรวจสอบ 5 นาทีเรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 2. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown)
+# 4. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown)
 # ==========================================
 class RoleSelect(nextcord.ui.Select):
     def __init__(self):
@@ -141,7 +218,7 @@ async def setup_selfroles(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 3. ระบบ Tickets (สร้างห้องคุยส่วนตัว)
+# 5. ระบบ Tickets (สร้างห้องคุยส่วนตัว)
 # ==========================================
 class CloseTicketView(nextcord.ui.View):
     def __init__(self):
@@ -163,19 +240,16 @@ class TicketView(nextcord.ui.View):
         guild = interaction.guild
         member = interaction.user
 
-        # ตรวจสอบว่ามีห้องของ user นี้อยู่แล้วหรือยัง
         existing_channel = nextcord.utils.get(guild.text_channels, name=f"ticket-{member.name.lower()}")
         if existing_channel:
             return await interaction.response.send_message(f"❌ คุณมีห้อง Ticket เปิดไว้อยู่แล้วค่ะ: {existing_channel.mention}", ephemeral=True)
 
-        # กำหนดสิทธิ์การมองเห็นห้อง (เห็นเฉพาะตัว User และ Admin)
         overwrites = {
             guild.default_role: nextcord.PermissionOverwrite(view_channel=False),
             member: nextcord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
             guild.me: nextcord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
-        # สร้างห้องในหมวดหมู่เดิม หรือสร้างห้องใหม่
         ticket_channel = await guild.create_text_channel(
             name=f"ticket-{member.name}",
             overwrites=overwrites,
@@ -204,7 +278,6 @@ async def setup_ticket(interaction: nextcord.Interaction):
         description="หากคุณมีปัญหา ติดต่อสอบถาม หรือต้องการแจ้งเรื่องต่างๆ สามารถกดปุ่ม **'🎫 เปิด Ticket'** ด้านล่างนี้เพื่อสร้างห้องพูดคุยส่วนตัวกับทีมงานได้เลยค่ะ!",
         color=nextcord.Color.gold()
     )
-    # รูปภาพใหม่สำหรับ Tickets ตามที่คุณขอ
     embed.set_image(url="https://i.pinimg.com/1200x/ad/80/97/ad80973abc102722c5d27cb68bcd1363.jpg")
     embed.set_footer(text="ระบบห้องส่วนตัวปลอดภัยและเป็นความลับ 🌸")
 
@@ -214,12 +287,12 @@ async def setup_ticket(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 4. ระบบตั้งค่าช่องคุยกับ Frost AI
+# 6. ระบบตั้งค่าช่องคุยกับ Frost AI
 # ==========================================
 @bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
 async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
 
     allowed_ai_channels[interaction.guild.id] = channel.id
     
@@ -232,7 +305,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# 5. ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
+# 7. ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
 # ==========================================
 @bot.event
 async def on_message(message):
