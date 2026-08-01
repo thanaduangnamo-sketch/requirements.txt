@@ -40,7 +40,7 @@ async def change_status():
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
         discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
-        discord.Game(name="พิมพ์ /ติดต่อแอดมิน เพื่อแจ้งปัญหา")
+        discord.Game(name="ระบบแปลภาษา & Token Checker พร้อมใช้งาน")
     ]
     
     if not hasattr(change_status, "index"):
@@ -56,6 +56,7 @@ async def change_status():
 async def on_ready():
     bot.add_view(PersistentVerifyView())
     bot.add_view(TicketView())
+    bot.add_view(TranslateView())
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -111,6 +112,82 @@ async def on_member_join(member: discord.Member):
         embed.set_footer(text=f"เซิร์ฟเวอร์: {guild.name}", icon_url=guild.icon.url if guild.icon else None)
 
         await target_channel.send(embed=embed)
+
+
+# ==========================================
+# 🌐 ระบบแปลภาษา (Translate System)
+# ==========================================
+class TranslateModal(discord.ui.Modal, title="🌐 ระบบแปลภาษาอัตโนมัติ"):
+    text_input = discord.ui.TextInput(
+        label="ข้อความที่ต้องการแปล",
+        style=discord.TextStyle.paragraph,
+        placeholder="พิมพ์ข้อความที่ต้องการแปลภาษาลงที่นี่...",
+        required=True,
+        max_length=1000
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        original_text = self.text_input.value.strip()
+
+        # ใช้ Google Translate API แบบฟรีผ่านสาธารณะ
+        url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=th&dt=t&q=" + discord.utils.parse_ratelimit(original_text) if hasattr(discord.utils, 'parse_ratelimit') else f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=th&dt=t&q={original_text}"
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return await interaction.followup.send("❌ เกิดข้อผิดพลาดในการเชื่อมต่อระบบแปลภาษา", ephemeral=True)
+                res_json = await resp.json()
+                translated_text = "".join([item[0] for item in res_json[0]])
+                detected_lang = res_json[2].upper()
+
+        embed = discord.Embed(
+            title="🌐 ผลการแปลภาษา (Translation Result)",
+            color=0x2ecc71
+        )
+        embed.add_field(name="📝 ข้อความต้นฉบับ", value=f"```{original_text}```", inline=False)
+        embed.add_field(name=f"✨ แปลเป็นภาษาไทย (จาก: {detected_lang})", value=f"```{translated_text}```", inline=False)
+        embed.set_footer(text="Translation System Powered by Bot")
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class TranslateView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="แปลภาษา",
+        style=discord.ButtonStyle.success, # ปุ่มสีเขียว
+        emoji="🌐",
+        custom_id="icewen_translate:button"
+    )
+    async def open_translate(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(TranslateModal())
+
+
+@bot.tree.command(name="translate", description="เปิดหน้าต่างระบบแปลภาษาพร้อมวิธีใช้งานแบบละเอียด")
+async def translate_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🌐 TRANSLATE SYSTEM | ระบบแปลภาษา",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° TRANSLATE °•.\n"
+            "╭ · ระบบแปลภาษาอัตโนมัติ รวดเร็วและแม่นยำ\n"
+            "│ · รองรับการแปลภาษาจากทั่วโลกเป็นภาษาไทย\n"
+            "╰ · ใช้งานง่ายผ่านปุ่มกดด้านล่างทันที\n\n"
+            "📖 **วิธีใช้งานระบบ:**\n"
+            "1. กดปุ่มสีเขียว **'แปลภาษา'** ด้านล่าง\n"
+            "2. กรอกข้อความที่ต้องการแปลลงในช่องว่างที่ปรากฏขึ้น\n"
+            "3. กดปุ่มส่ง (Submit) เพื่อดูผลลัพธ์การแปลภาษา\n"
+            "4. ระบบจะแสดงผลลัพธ์แบบเฉพาะตัวคุณ (ไม่รบกวนผู้อื่น)"
+        ),
+        color=0x2ecc71 # สีเขียว
+    )
+    embed.set_image(url="https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg")
+    embed.set_footer(text="ICEWEN_2 : TRANSLATE SYSTEM")
+
+    await interaction.channel.send(embed=embed, view=TranslateView())
+    await interaction.response.send_message("✅ ส่งหน้าต่างแปลภาษาเรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
