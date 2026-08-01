@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 import os
 import aiohttp
+import asyncio
 from flask import Flask
 from threading import Thread
 
@@ -40,7 +41,7 @@ async def change_status():
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
         discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
-        discord.Game(name="ระบบแปลภาษา & Token Checker พร้อมใช้งาน")
+        discord.Game(name="ระบบแปลภาษา & Webhook Spammer พร้อมใช้งาน")
     ]
     
     if not hasattr(change_status, "index"):
@@ -57,6 +58,7 @@ async def on_ready():
     bot.add_view(PersistentVerifyView())
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
+    bot.add_view(WebhookSpamView()) # ลงทะเบียนปุ่มค้างไว้ (Persistent View)
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -115,6 +117,129 @@ async def on_member_join(member: discord.Member):
 
 
 # ==========================================
+# 🚀 ระบบส่งข้อความผ่าน Webhook (จำกัดถึง 100 ข้อความ + แจ้งเตือน DM)
+# ==========================================
+class WebhookSpamModal(discord.ui.Modal, title="🚀 ระบบส่ง Webhook จำนวนมาก"):
+    webhook_url = discord.ui.TextInput(
+        label="ลิงก์ Webhook (Discord Webhook URL)",
+        style=discord.TextStyle.short,
+        placeholder="https://discord.com/api/webhooks/...",
+        required=True
+    )
+    message_content = discord.ui.TextInput(
+        label="ข้อความที่ต้องการส่ง",
+        style=discord.TextStyle.paragraph,
+        placeholder="พิมพ์ข้อความที่ต้องการส่งซ้ำๆ...",
+        required=True,
+        max_length=1000
+    )
+    count_input = discord.ui.TextInput(
+        label="จำนวนครั้งที่ต้องการส่ง (สูงสุด 100)",
+        style=discord.TextStyle.short,
+        placeholder="ใส่ตัวเลข 1 ถึง 100",
+        required=True,
+        max_length=3
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        
+        url = self.webhook_url.value.strip()
+        text = self.message_content.value.strip()
+        raw_count = self.count_input.value.strip()
+
+        # ตรวจสอบความถูกต้องของ URL
+        if not url.startswith("https://discord.com/api/webhooks/") and not url.startswith("https://discordapp.com/api/webhooks/"):
+            return await interaction.followup.send("❌ **ลิงก์ Webhook ไม่ถูกต้อง!** กรุณาตรวจสอบลิงก์ใหม่อีกครั้ง", ephemeral=True)
+
+        # ตรวจสอบจำนวนครั้ง
+        if not raw_count.isdigit():
+            return await interaction.followup.send("❌ **จำนวนครั้งไม่ถูกต้อง!** กรุณาใส่เป็นตัวเลขเท่านั้น", ephemeral=True)
+        
+        count = int(raw_count)
+        if count < 1 or count > 100:
+            return await interaction.followup.send("❌ **จำกัดจำนวนครั้งระหว่าง 1 ถึง 100 เท่านั้นครับ!**", ephemeral=True)
+
+        await interaction.followup.send(f"⏳ กำลังดำเนินการส่งข้อความผ่าน Webhook จำนวน `{count}` ครั้ง... โปรดรอสักครู่ ระบบจะแจ้งเตือนไปที่ DM เมื่อเสร็จสิ้น", ephemeral=True)
+
+        success_count = 0
+        failed_count = 0
+
+        async with aiohttp.ClientSession() as session:
+            for i in range(count):
+                payload = {"content": text}
+                try:
+                    async with session.post(url, json=payload) as resp:
+                        if resp.status in [200, 204]:
+                            success_count += 1
+                        else:
+                            failed_count += 1
+                except Exception:
+                    failed_count += 1
+                
+                # หน่วงเวลาเล็กน้อยเพื่อป้องกัน Discord Rate Limit (0.5 วินาทีต่อข้อความ)
+                await asyncio.sleep(0.5)
+
+        # ส่งสรุปผลเข้า DM ของผู้ใช้งาน
+        dm_embed = discord.Embed(
+            title="📊 สรุปผลการส่งข้อความ Webhook",
+            description=(
+                f"✅ **ส่งสำเร็จ:** `{success_count}` ครั้ง\n"
+                f"❌ **ส่งไม่สำเร็จ:** `{failed_count}` ครั้ง\n"
+                f"📌 **จำนวนที่ตั้งไว้:** `{count}` ครั้ง\n\n"
+                f"📝 **ข้อความที่ส่ง:**\n```{text}```"
+            ),
+            color=0x3498db
+        )
+        dm_embed.set_footer(text="ICEWEN_2 : Webhook Spammer System")
+
+        try:
+            user = interaction.user
+            await user.send(embed=dm_embed)
+        except discord.Forbidden:
+            print(f"ไม่สามารถส่ง DM หา {interaction.user.name} ได้เนื่องจากปิดรับข้อความส่วนตัว")
+
+
+class WebhookSpamView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="ส่ง Webhook (สูงสุด 100)",
+        style=discord.ButtonStyle.primary, # ปุ่มสีฟ้า
+        emoji="🚀",
+        custom_id="icewen_webhook_spam:button"
+    )
+    async def open_webhook_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(WebhookSpamModal())
+
+
+@bot.tree.command(name="webhook", description="เปิดหน้าต่างส่งข้อความผ่าน Webhook (จำกัดสูงสุด 100 ครั้ง แจ้งเตือนเข้า DM)")
+async def webhook_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🚀 WEBHOOK SPAMMER | ระบบส่งข้อความผ่านเว็บฮุค",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° WEBHOOK °•.\n"
+            "╭ · ระบบส่งข้อความอัตโนมัติผ่าน Discord Webhook\n"
+            "│ · กำหนดข้อความและจำนวนครั้งได้ตามต้องการ\n"
+            "│ · รองรับการส่งสูงสุดถึง **100 ข้อความ** ต่อครั้ง\n"
+            "╰ · ระบบจะทำการ **แจ้งเตือนสรุปผลเข้า DM** ทันทีที่ทำงานเสร็จ!\n\n"
+            "📖 **วิธีใช้งานระบบ:**\n"
+            "1. กดปุ่มสีฟ้า **'ส่ง Webhook (สูงสุด 100)'** ด้านล่าง\n"
+            "2. กรอกลิงก์ Webhook URL ของคุณ\n"
+            "3. ใส่ข้อความที่ต้องการส่ง\n"
+            "4. ใส่จำนวนครั้ง (1 - 100) แล้วกด Submit ได้เลย!"
+        ),
+        color=0x3498db # สีฟ้า
+    )
+    embed.set_image(url="https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg")
+    embed.set_footer(text="ICEWEN_2 : WEBHOOK SYSTEM")
+
+    await interaction.channel.send(embed=embed, view=WebhookSpamView())
+    await interaction.response.send_message("✅ ส่งหน้าต่าง Webhook Spammer เรียบร้อยแล้วครับ", ephemeral=True)
+
+
+# ==========================================
 # 🌐 ระบบแปลภาษา (Translate System)
 # ==========================================
 class TranslateModal(discord.ui.Modal, title="🌐 ระบบแปลภาษาอัตโนมัติ"):
@@ -130,8 +255,7 @@ class TranslateModal(discord.ui.Modal, title="🌐 ระบบแปลภา�
         await interaction.response.defer(ephemeral=True)
         original_text = self.text_input.value.strip()
 
-        # ใช้ Google Translate API แบบฟรีผ่านสาธารณะ
-        url = "https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=th&dt=t&q=" + discord.utils.parse_ratelimit(original_text) if hasattr(discord.utils, 'parse_ratelimit') else f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=th&dt=t&q={original_text}"
+        url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=th&dt=t&q={original_text}"
         
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as resp:
@@ -158,7 +282,7 @@ class TranslateView(discord.ui.View):
 
     @discord.ui.button(
         label="แปลภาษา",
-        style=discord.ButtonStyle.success, # ปุ่มสีเขียว
+        style=discord.ButtonStyle.success,
         emoji="🌐",
         custom_id="icewen_translate:button"
     )
@@ -181,133 +305,13 @@ async def translate_command(interaction: discord.Interaction):
             "3. กดปุ่มส่ง (Submit) เพื่อดูผลลัพธ์การแปลภาษา\n"
             "4. ระบบจะแสดงผลลัพธ์แบบเฉพาะตัวคุณ (ไม่รบกวนผู้อื่น)"
         ),
-        color=0x2ecc71 # สีเขียว
+        color=0x2ecc71
     )
     embed.set_image(url="https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg")
     embed.set_footer(text="ICEWEN_2 : TRANSLATE SYSTEM")
 
     await interaction.channel.send(embed=embed, view=TranslateView())
     await interaction.response.send_message("✅ ส่งหน้าต่างแปลภาษาเรียบร้อยแล้วครับ", ephemeral=True)
-
-
-# ==========================================
-# 🔍 ระบบ TOKEN CHECKER (ความลับสูงสุด ส่งตรง DM)
-# ==========================================
-class TokenModal(discord.ui.Modal, title="ICEWEN_2 : TOKEN CHECKER"):
-    token_input = discord.ui.TextInput(
-        label="กรอก Discord Token ที่ต้องการตรวจสอบ",
-        style=discord.TextStyle.paragraph,
-        placeholder="วาง Token ของคุณลงที่นี่...",
-        required=True,
-        max_length=200
-    )
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        raw_token = self.token_input.value.strip()
-
-        headers = {
-            "Authorization": raw_token,
-            "Content-Type": "application/json"
-        }
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
-                if resp.status != 200:
-                    return await interaction.followup.send(
-                        "❌ **Token ไม่ถูกต้องหรือหมดอายุแล้ว!** กรุณาตรวจสอบความถูกต้องอีกครั้ง",
-                        ephemeral=True
-                    )
-                user_data = await resp.json()
-
-        username = user_data.get("username", "Unknown")
-        discriminator = user_data.get("discriminator", "0")
-        full_name = f"{username}#{discriminator}" if discriminator != "0" else username
-        user_id = user_data.get("id", "Unknown")
-        email = user_data.get("email", "ไม่มีข้อมูล / ซ่อนอยู่")
-        phone = user_data.get("phone", "ไม่มีข้อมูล / ซ่อนอยู่")
-        mfa_enabled = "เปิดใช้งาน (2FA)" if user_data.get("mfa_enabled") else "ปิดใช้งาน"
-        verified = "ยืนยันแล้ว" if user_data.get("verified") else "ยังไม่ยืนยัน"
-        
-        is_bot = user_data.get("bot", False)
-        acc_type = "🤖 Bot Account" if is_bot else "👤 User Account"
-
-        nitro_type = user_data.get("premium_type", 0)
-        nitro_map = {0: "ไม่มี Nitro", 1: "Nitro Classic", 2: "Nitro Boost", 3: "Nitro Basic"}
-        nitro_status = nitro_map.get(nitro_type, "ไม่ทราบสถานะ")
-
-        avatar_id = user_data.get("avatar")
-        avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_id}.png" if avatar_id else "https://cdn.discordapp.com/embed/avatars/0.png"
-
-        result_embed = discord.Embed(
-            title="✨ TOKEN CHECKER RESULT ✨",
-            description=(
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "• **ข้อมูล Token จะไม่ถูกนำไปบันทึกในฐานข้อมูลใดๆ**\n"
-                "• ผลลัพธ์แสดงเฉพาะตัวคุณเท่านั้น (ส่งเข้า DM ส่วนตัว)\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=0xe74c3c
-        )
-        result_embed.set_thumbnail(url=avatar_url)
-        result_embed.add_field(name="🏷️ ชื่อผู้ใช้", value=f"`{full_name}`", inline=True)
-        result_embed.add_field(name="🆔 บัญชี ID", value=f"`{user_id}`", inline=True)
-        result_embed.add_field(name="📂 ประเภทบัญชี", value=acc_type, inline=True)
-        result_embed.add_field(name="📧 อีเมล", value=f"`{email}`", inline=True)
-        result_embed.add_field(name="📱 เบอร์โทรศัพท์", value=f"`{phone}`", inline=True)
-        result_embed.add_field(name="🔒 ระบบความปลอดภัย (2FA)", value=mfa_enabled, inline=True)
-        result_embed.add_field(name="✅ สถานะยืนยันอีเมล", value=verified, inline=True)
-        result_embed.add_field(name="💎 สถานะ Nitro ล่าสุด", value=nitro_status, inline=True)
-        result_embed.set_footer(text="ICEWEN_2 : TOKEN CHECKER SYSTEM", icon_url="https://i.pinimg.com/736x/5c/6f/47/5c6f4777c193e7fff8120e187ace58fd.jpg")
-
-        try:
-            await interaction.user.send(embed=result_embed)
-            await interaction.followup.send(
-                "✅ ตรวจสอบ Token สำเร็จ! ระบบได้จัดส่งผลลัพธ์ไปที่ **ข้อความส่วนตัว (DM)** เรียบร้อยแล้ว",
-                ephemeral=True
-            )
-        except discord.Forbidden:
-            await interaction.followup.send(
-                "❌ ไม่สามารถส่งข้อความหาคุณได้ กรุณาเปิดรับข้อความส่วนตัว (Direct Messages) ก่อนใช้งานครับ",
-                ephemeral=True
-            )
-
-
-class TokenCheckerView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(
-        label="TOKEN CHECKER",
-        style=discord.ButtonStyle.danger,
-        emoji="🔍",
-        custom_id="icewen_token_checker:button"
-    )
-    async def open_checker(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(TokenModal())
-
-
-@bot.tree.command(name="checktoken", description="เปิดหน้าต่างตรวจสอบ Discord Token (ส่งผลลัพธ์เข้า DM)")
-async def checktoken_command(interaction: discord.Interaction):
-    embed = discord.Embed(
-        title="TOKEN CHECKER | ตรวจสอบ Discord Token",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° TOKEN CHECKER °•.\n"
-            "╭ · ระบบตรวจสอบความถูกต้องและดูสิทธิ์ของ Token\n"
-            "│ · แยกประเภทบัญชีอัตโนมัติ (User Account / Bot)\n"
-            "│ · ตรวจสอบอีเมล, เบอร์โทรศัพท์ และสถานะ 2FA\n"
-            "╰ · เช็คสถานะแพลทินัม Nitro ล่าสุด\n\n"
-            "**นโยบายความปลอดภัย:**\n"
-            "• ข้อมูล Token จะไม่ถูกนำไปบันทึกหรือบันทึกในฐานข้อมูลใดๆ\n"
-            "• ผลลัพธ์แสดงเฉพาะตัวคุณเท่านั้น (ส่งเข้า DM ส่วนตัว)"
-        ),
-        color=0xe74c3c
-    )
-    embed.set_image(url="https://i.pinimg.com/736x/5c/6f/47/5c6f4777c193e7fff8120e187ace58fd.jpg")
-    embed.set_footer(text="ICEWEN_2 : TOKEN CHECKER SYSTEM")
-
-    await interaction.channel.send(embed=embed, view=TokenCheckerView())
-    await interaction.response.send_message("✅ ส่งหน้าต่าง Token Checker เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
@@ -470,7 +474,6 @@ class CloseTicketView(discord.ui.View):
     )
     async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("🔒 กำลังปิดห้องนี้ใน 3 วินาที...", ephemeral=True)
-        import asyncio
         await asyncio.sleep(3)
         await interaction.channel.delete()
 
