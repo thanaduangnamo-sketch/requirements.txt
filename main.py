@@ -45,7 +45,7 @@ async def change_status():
     
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
-        discord.Game(name="ระบบยืนยันตัวตน & HypeSquad พร้อมใช้งาน"),
+        discord.Game(name="ระบบยืนยันตัวตนพร้อมใช้งาน"),
         discord.Game(name="ระบบแปลภาษา & Ticket พร้อมใช้งาน")
     ]
     
@@ -63,7 +63,6 @@ async def on_ready():
     bot.add_view(PersistentVerifyView())
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
-    bot.add_view(HypeSquadView())
     bot.add_view(TokenCheckerView())
     
     server_count = len(bot.guilds)
@@ -315,92 +314,6 @@ async def checktoken_command(interaction: discord.Interaction):
 
     await interaction.channel.send(embed=embed, view=TokenCheckerView())
     await interaction.response.send_message("✅ ส่งหน้าต่าง Token Checker เรียบร้อยแล้วครับ", ephemeral=True)
-
-
-# ==========================================
-# 🏆 ระบบ HypeSquad Badges
-# ==========================================
-class HypeSquadSelect(discord.ui.Select):
-    def __init__(self):
-        options = [
-            discord.SelectOption(label="Bravery", description="สำหรับผู้กล้าหาญ (House of Bravery)", emoji="🟣", value="bravery"),
-            discord.SelectOption(label="Brilliance", description="สำหรับผู้ฉลาด (House of Brilliance)", emoji="🟠", value="brilliance"),
-            discord.SelectOption(label="Balance", description="สำหรับผู้สมดุล (House of Balance)", emoji="🟢", value="balance")
-        ]
-        super().__init__(placeholder="[ 🏆 เลือกบ้าน HypeSquad ที่ต้องการ ]", min_values=1, max_values=1, options=options, custom_id="hypesquad_select:dropdown")
-
-    async def callback(self, interaction: discord.Interaction):
-        house_name = self.values[0].capitalize()
-        embed = discord.Embed(
-            title=f"🏆 วิธีรับตรา HypeSquad: House of {house_name}",
-            description=(
-                f"คุณได้เลือกบ้าน **{house_name}** เรียบร้อยแล้ว!\n\n"
-                "📌 **วิธีรับตราในแอปพลิเคชัน Discord:**\n"
-                "1. ไปที่ **User Settings (ตั้งค่าผู้ใช้)** ของคุณ\n"
-                "2. เลื่อนหาเมนู **HypeSquad** (แถบด้านซ้ายล่าง)\n"
-                "3. กดปุ่ม **Join HypeSquad**\n"
-                f"4. เลือกบ้าน **{house_name}** เพื่อรับตราประดับโปรไฟล์ทันที!"
-            ),
-            color=0x2b2d31
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-class HypeSquadView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-        self.add_item(HypeSquadSelect())
-
-    @discord.ui.button(label="HypeSquad คืออะไร?", style=discord.ButtonStyle.primary, emoji="🟣", custom_id="hypesquad:what_is")
-    async def what_is_hypesquad(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            title="🟣 HypeSquad คืออะไร?",
-            description=(
-                "**HypeSquad** คือชุมชนผู้ใช้งาน Discord อย่างเป็นทางการ\n"
-                "เมื่อเข้าร่วม คุณจะได้รับ **Badge (ตราสัญลักษณ์)** พิเศษประดับไว้ที่โปรไฟล์ของคุณ\n"
-                "โดยแบ่งออกเป็น 3 บ้านหลัก:\n"
-                "• 🟣 **Bravery** (ความกล้าหาญ)\n"
-                "• 🟠 **Brilliance** (ความฉลาด)\n"
-                "• 🟢 **Balance** (ความสมดุล)"
-            ),
-            color=0x9b59b6
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="ลบตราออก", style=discord.ButtonStyle.danger, emoji="🔴", custom_id="hypesquad:remove")
-    async def remove_hypesquad(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            title="🔴 วิธีถอด / ลบตรา HypeSquad ออกจากโปรไฟล์",
-            description=(
-                "หากคุณต้องการถอดตรา HypeSquad ออก:\n"
-                "1. ไปที่ **User Settings (ตั้งค่าผู้ใช้)**\n"
-                "2. ไปที่เมนู **HypeSquad**\n"
-                "3. กดปุ่ม **Leave HypeSquad** ด้านล่างสุด ตราจะหายไปทันที"
-            ),
-            color=0xe74c3c
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
-@bot.tree.command(name="hypesquad", description="สร้างหน้าต่างระบบรับตรา HypeSquad Badges")
-@app_commands.describe(image="อัปโหลดรูปภาพแบนเนอร์ (ไม่บังคับ)", image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)")
-async def hypesquad_command(interaction: discord.Interaction, image: discord.Attachment = None, image_url: str = None):
-    embed = discord.Embed(
-        title="🏆 ระบบรับตรา HypeSquad Badges",
-        description=(
-            "🟣 **Bravery** - สำหรับผู้กล้าหาญ\n"
-            "🟠 **Brilliance** - สำหรับผู้ฉลาด\n"
-            "🟢 **Balance** - สำหรับผู้สมดุล"
-        ),
-        color=0x2b2d31
-    )
-    target_image = image.url if image else (image_url if image_url else "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg")
-    if target_image:
-        embed.set_image(url=target_image)
-    embed.set_footer(text="ICEWEN_2 : HYPESWAD SYSTEM")
-
-    await interaction.channel.send(embed=embed, view=HypeSquadView())
-    await interaction.response.send_message("✅ ส่งหน้าต่าง HypeSquad เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
