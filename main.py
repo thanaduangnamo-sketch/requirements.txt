@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import os
 from flask import Flask
 from threading import Thread
@@ -29,12 +29,38 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# --- ระบบลูปเปลี่ยนสถานะทุกๆ 1 นาที ---
+@tasks.loop(minutes=1)
+async def change_status():
+    server_count = len(bot.guilds)
+    
+    # รายการข้อความที่จะสลับเปลี่ยนวนไปเรื่อยๆ
+    statuses = [
+        discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
+        discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
+        discord.Game(name="พิมพ์ /ติดต่อแอดมิน เพื่อแจ้งปัญหา")
+    ]
+    
+    # สลับวนลูปข้อความ
+    if not hasattr(change_status, "index"):
+        change_status.index = 0
+    
+    current_status = statuses[change_status.index]
+    await bot.change_presence(status=discord.Status.online, activity=current_status)
+    
+    change_status.index = (change_status.index + 1) % len(statuses)
+
+
 @bot.event
 async def on_ready():
     bot.add_view(PersistentVerifyView())
     bot.add_view(TicketView())
     
-    print(f"Logged in as {bot.user.name} (Category Ticket Mode)")
+    server_count = len(bot.guilds)
+    print(f"Logged in as {bot.user.name} (Auto Status Mode)")
+    print(f"🌐 บอทกำลังให้บริการอยู่ทั้งหมด {server_count} เซิร์ฟเวอร์:")
+    for guild in bot.guilds:
+        print(f" - ชื่อเซิร์ฟเวอร์: {guild.name} | ID: {guild.id}")
     
     try:
         synced = await bot.tree.sync()
@@ -42,12 +68,11 @@ async def on_ready():
     except Exception as e:
         print(f"Failed to sync commands: {e}")
 
-    streaming_activity = discord.Streaming(
-        name="ระบบยืนยันตัวตนและ Ticket พร้อมใช้งานครับ",
-        url="https://www.twitch.tv/discord"
-    )
-    await bot.change_presence(status=discord.Status.online, activity=streaming_activity)
-    print("✅ บอทออนไลน์ในสถานะสตรีมมิ่ง (เม็ดม่วง) เรียบร้อยแล้วครับ")
+    # เริ่มต้นใช้งานลูปเปลี่ยนสถานะ
+    if not change_status.is_running():
+        change_status.start()
+        
+    print("✅ เริ่มระบบเปลี่ยนสถานะอัตโนมัติทุก 1 นาทีเรียบร้อยแล้วครับ")
 
 
 # ==========================================
@@ -149,7 +174,6 @@ class TicketView(discord.ui.View):
         guild = interaction.guild
         user = interaction.user
 
-        # ตรวจสอบว่าผู้ใช้เปิดตั๋วค้างไว้แล้วหรือยัง
         for channel in guild.text_channels:
             if channel.topic and f"ID: {user.id}" in channel.topic:
                 return await interaction.response.send_message(
@@ -157,13 +181,11 @@ class TicketView(discord.ui.View):
                     ephemeral=True
                 )
 
-        # ค้นหาหรือสร้างหมวดหมู่ (Category) ชื่อ "🎫 TICKETS"
         category_name = "🎫 TICKETS"
         category = discord.utils.get(guild.categories, name=category_name)
         if not category:
             category = await guild.create_category(category_name)
 
-        # ค้นหาเลข Ticket ถัดไป (นับจากห้องในหมวดหมู่ หรือห้องทั้งหมดที่ขึ้นต้นด้วย ticket-)
         existing_tickets = [c for c in guild.text_channels if c.name.startswith("ticket-")]
         ticket_numbers = []
         for c in existing_tickets:
@@ -179,7 +201,6 @@ class TicketView(discord.ui.View):
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
-        # สร้างห้องไว้ในหมวดหมู่ที่เตรียมไว้
         ticket_channel = await guild.create_text_channel(
             name=f"ticket-{next_number}",
             category=category,
