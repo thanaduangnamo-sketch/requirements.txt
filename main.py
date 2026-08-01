@@ -13,7 +13,6 @@ def home():
     return "Multi-System Bot is running!"
 
 def run():
-    # ดึง Port จาก Render โดยตรง ถ้าไม่มีให้ใช้ 8080
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -28,6 +27,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 intents.members = True
+intents.moderation = True # สำหรับดึง Audit Log ตรวจสอบคนดึงบอท
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -72,6 +72,47 @@ async def on_ready():
         change_status.start()
         
     print("✅ บอทออนไลน์และเริ่มระบบเปลี่ยนสถานะเรียบร้อยแล้วครับ")
+
+
+# ==========================================
+# 🛡️ ระบบแจ้งเตือนเมื่อมีคนดึงบอทเข้าเซิร์ฟเวอร์
+# ==========================================
+@bot.event
+async def on_member_join(member: discord.Member):
+    # ตรวจสอบว่าสมาชิกใหม่ที่เข้ามาเป็น "บอท" หรือไม่
+    if member.bot:
+        guild = member.guild
+        target_channel_id = 1533086872471994489  # ห้องไอดีที่คุณกำหนด
+        target_channel = guild.get_channel(target_channel_id)
+
+        if not target_channel:
+            return
+
+        # ค้นหาว่าใครเป็นคนเชิญบอทตัวนี้เข้ามาจาก Audit Log
+        inviter = "ไม่ทราบ (อาจใช้ลิงก์ OAuth2 ลับ หรือดึงตรง)"
+        try:
+            async for entry in guild.audit_logs(action=discord.AuditLogAction.bot_add, limit=1):
+                if entry.target.id == member.id:
+                    inviter = entry.user.mention
+                    break
+        except Exception as e:
+            print(f"ไม่สามารถดึง Audit Log ได้: {e}")
+
+        # สร้าง Embed แจ้งเตือนสุดเท่
+        embed = discord.Embed(
+            title="🚨 มีการเพิ่มบอทตัวใหม่เข้าสู่เซิร์ฟเวอร์!",
+            description=(
+                f"🤖 **ชื่อบอท:** {member.mention} (`{member.name}`)\n"
+                f"🆔 **Bot ID:** `{member.id}`\n"
+                f"👤 **ผู้ที่ดึงเข้าเซิร์ฟ:** {inviter}\n\n"
+                f"📅 **เวลา:** <t:{int(member.joined_at.timestamp())}:F>"
+            ),
+            color=0xe74c3c
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
+        embed.set_footer(text=f"เซิร์ฟเวอร์: {guild.name}", icon_url=guild.icon.url if guild.icon else None)
+
+        await target_channel.send(embed=embed)
 
 
 # ==========================================
