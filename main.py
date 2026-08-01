@@ -6,6 +6,7 @@ import aiohttp
 import asyncio
 from flask import Flask
 from threading import Thread
+from datetime import datetime
 
 # --- ระบบเปิดเว็บจำลองสำหรับ Render (ดึง Port อัตโนมัติ) ---
 app = Flask('')
@@ -41,7 +42,7 @@ async def change_status():
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
         discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
-        discord.Game(name="ระบบแปลภาษา & Webhook Spammer พร้อมใช้งาน")
+        discord.Game(name="ระบบ Member Stats & Webhook พร้อมใช้งาน")
     ]
     
     if not hasattr(change_status, "index"):
@@ -59,6 +60,8 @@ async def on_ready():
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
     bot.add_view(WebhookSpamView())
+    bot.add_view(CheckerButtonView())
+    bot.add_view(MemberStatsView()) # ลงทะเบียนปุ่มตารางสมาชิกค้างไว้
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -117,7 +120,75 @@ async def on_member_join(member: discord.Member):
 
 
 # ==========================================
-# 🚀 ระบบส่งข้อความผ่าน Webhook (จำกัดถึง 100 ข้อความ + แจ้งเตือน DM)
+# 📊 ระบบตารางแสดงข้อมูลสมาชิก (Server Member Stats)
+# ==========================================
+class MemberStatsView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="รีเฟรชข้อมูลสมาชิก",
+        style=discord.ButtonStyle.primary,
+        emoji="🔄",
+        custom_id="icewen_memberstats:button"
+    )
+    async def refresh_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        total_members = guild.member_count
+        bot_count = sum(1 for m in guild.members if m.bot)
+        human_count = total_members - bot_count
+
+        embed = discord.Embed(
+            title=f"📊 SERVER MEMBER STATS | ข้อมูลสมาชิก {guild.name}",
+            description=(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° STATS °•.\n"
+                "╭ ·  ตารางแสดงสถิติประชากรภายในเซิร์ฟเวอร์\n"
+                "│ ·  อัปเดตข้อมูลแบบเรียลไทม์\n"
+                "╰ ·  ตรวจสอบจำนวนสมาชิก คน และบอทอย่างแม่นยำ\n\n"
+                f"👥 **สมาชิกรวมทั้งหมด:** `{total_members:,}` คน\n"
+                f"👤 **สมาชิกที่เป็นมนุษย์:** `{human_count:,}` คน\n"
+                f"🤖 **สมาชิกที่เป็นบอท:** `{bot_count:,}` บอท"
+            ),
+            color=0x3498db
+        )
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        embed.set_footer(text=f"ID เซิร์ฟเวอร์: {guild.id} | ICEWEN_2 System")
+
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
+@bot.tree.command(name="memberstats", description="สร้างตารางแสดงสถิติสมาชิก (รวม, มนุษย์, บอท)")
+async def memberstats_command(interaction: discord.Interaction):
+    guild = interaction.guild
+    total_members = guild.member_count
+    bot_count = sum(1 for m in guild.members if m.bot)
+    human_count = total_members - bot_count
+
+    embed = discord.Embed(
+        title=f"📊 SERVER MEMBER STATS | ข้อมูลสมาชิก {guild.name}",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° STATS °•.\n"
+            "╭ ·  ตารางแสดงสถิติประชากรภายในเซิร์ฟเวอร์\n"
+            "│ ·  อัปเดตข้อมูลแบบเรียลไทม์\n"
+            "╰ ·  ตรวจสอบจำนวนสมาชิก คน และบอทอย่างแม่นยำ\n\n"
+            f"👥 **สมาชิกรวมทั้งหมด:** `{total_members:,}` คน\n"
+            f"👤 **สมาชิกที่เป็นมนุษย์:** `{human_count:,}` คน\n"
+            f"🤖 **สมาชิกที่เป็นบอท:** `{bot_count:,}` บอท"
+        ),
+        color=0x3498db
+    )
+    if guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+    embed.set_image(url="https://i.pinimg.com/736x/ba/39/4d/ba394dfe32869d5078c3d94a69dff0ce.jpg")
+    embed.set_footer(text=f"ID เซิร์ฟเวอร์: {guild.id} | ICEWEN_2 System")
+
+    await interaction.channel.send(embed=embed, view=MemberStatsView())
+    await interaction.response.send_message("✅ สร้างตารางข้อมูลสมาชิกเรียบร้อยแล้วครับ", ephemeral=True)
+
+
+# ==========================================
+# 🚀 ระบบส่งข้อความผ่าน Webhook (จำกัดถึง 200 ข้อความ + แจ้งเตือน DM)
 # ==========================================
 class WebhookSpamModal(discord.ui.Modal, title="🚀 ระบบส่ง Webhook จำนวนมาก"):
     webhook_url = discord.ui.TextInput(
@@ -134,9 +205,9 @@ class WebhookSpamModal(discord.ui.Modal, title="🚀 ระบบส่ง Webho
         max_length=1000
     )
     count_input = discord.ui.TextInput(
-        label="จำนวนครั้งที่ต้องการส่ง (สูงสุด 100)",
+        label="จำนวนครั้งที่ต้องการส่ง (สูงสุด 200)",
         style=discord.TextStyle.short,
-        placeholder="ใส่ตัวเลข 1 ถึง 100",
+        placeholder="ใส่ตัวเลข 1 ถึง 200",
         required=True,
         max_length=3
     )
@@ -155,8 +226,8 @@ class WebhookSpamModal(discord.ui.Modal, title="🚀 ระบบส่ง Webho
             return await interaction.followup.send("❌ **จำนวนครั้งไม่ถูกต้อง!** กรุณาใส่เป็นตัวเลขเท่านั้น", ephemeral=True)
         
         count = int(raw_count)
-        if count < 1 or count > 100:
-            return await interaction.followup.send("❌ **จำกัดจำนวนครั้งระหว่าง 1 ถึง 100 เท่านั้นครับ!**", ephemeral=True)
+        if count < 1 or count > 200:
+            return await interaction.followup.send("❌ **จำกัดจำนวนครั้งระหว่าง 1 ถึง 200 เท่านั้นครับ!**", ephemeral=True)
 
         await interaction.followup.send(f"⏳ กำลังดำเนินการส่งข้อความผ่าน Webhook จำนวน `{count}` ครั้ง... โปรดรอสักครู่ ระบบจะแจ้งเตือนไปที่ DM เมื่อเสร็จสิ้น", ephemeral=True)
 
@@ -175,7 +246,7 @@ class WebhookSpamModal(discord.ui.Modal, title="🚀 ระบบส่ง Webho
                 except Exception:
                     failed_count += 1
                 
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.4)
 
         dm_embed = discord.Embed(
             title="📊 สรุปผลการส่งข้อความ Webhook",
@@ -201,7 +272,7 @@ class WebhookSpamView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="ส่ง Webhook (สูงสุด 100)",
+        label="ส่ง Webhook (สูงสุด 200)",
         style=discord.ButtonStyle.primary,
         emoji="🚀",
         custom_id="icewen_webhook_spam:button"
@@ -210,7 +281,7 @@ class WebhookSpamView(discord.ui.View):
         await interaction.response.send_modal(WebhookSpamModal())
 
 
-@bot.tree.command(name="webhook", description="เปิดหน้าต่างส่งข้อความผ่าน Webhook (จำกัดสูงสุด 100 ครั้ง แจ้งเตือนเข้า DM)")
+@bot.tree.command(name="webhook", description="เปิดหน้าต่างส่งข้อความผ่าน Webhook (จำกัดสูงสุด 200 ครั้ง แจ้งเตือนเข้า DM)")
 async def webhook_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🚀 WEBHOOK SPAMMER | ระบบส่งข้อความผ่านเว็บฮุค",
@@ -218,13 +289,14 @@ async def webhook_command(interaction: discord.Interaction):
             "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° WEBHOOK °•.\n"
             "╭ · ระบบส่งข้อความอัตโนมัติผ่าน Discord Webhook\n"
             "│ · กำหนดข้อความและจำนวนครั้งได้ตามต้องการ\n"
-            "│ · รองรับการส่งสูงสุดถึง **100 ข้อความ** ต่อครั้ง\n"
+            "│ · รองรับการส่งสูงสุดถึง **200 ข้อความ** ต่อครั้ง\n"
             "╰ · ระบบจะทำการ **แจ้งเตือนสรุปผลเข้า DM** ทันทีที่ทำงานเสร็จ!\n\n"
+            "⚠️ **คำเตือน:** อย่ากดมากเกินไปเพราะบอททำงานได้ต่อคนเท่านั้น\n\n"
             "📖 **วิธีใช้งานระบบ:**\n"
-            "1. กดปุ่มสีฟ้า **'ส่ง Webhook (สูงสุด 100)'** ด้านล่าง\n"
+            "1. กดปุ่มสีฟ้า **'ส่ง Webhook (สูงสุด 200)'** ด้านล่าง\n"
             "2. กรอกลิงก์ Webhook URL ของคุณ\n"
             "3. ใส่ข้อความที่ต้องการส่ง\n"
-            "4. ใส่จำนวนครั้ง (1 - 100) แล้วกด Submit ได้เลย!"
+            "4. ใส่จำนวนครั้ง (1 - 200) แล้วกด Submit ได้เลย!"
         ),
         color=0x3498db
     )
@@ -233,6 +305,114 @@ async def webhook_command(interaction: discord.Interaction):
 
     await interaction.channel.send(embed=embed, view=WebhookSpamView())
     await interaction.response.send_message("✅ ส่งหน้าต่าง Webhook Spammer เรียบร้อยแล้วครับ", ephemeral=True)
+
+
+# ==========================================
+# 🔍 ระบบ Discord Checker (ตรวจสอบวันสร้างไอดีจาก ID)
+# ==========================================
+class CheckerModal(discord.ui.Modal, title="🔍 ตรวจสอบวันสร้างไอดี Discord"):
+    id_input = discord.ui.TextInput(
+        label="Discord Snowflake ID (ใส่ไอดีที่ต้องการเช็ค)",
+        style=discord.TextStyle.short,
+        placeholder="เช่น 123456789012345678",
+        required=True,
+        max_length=20
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        raw_id = self.id_input.value.strip()
+
+        if not raw_id.isdigit():
+            return await interaction.followup.send("❌ **ID ไม่ถูกต้อง!** กรุณาใส่เฉพาะตัวเลขเท่านั้น", ephemeral=True)
+
+        target_id = int(raw_id)
+
+        try:
+            timestamp = ((target_id >> 22) + 1420070400000) / 1000
+            created_at = datetime.fromtimestamp(timestamp)
+            unix_ts = int(timestamp)
+        except Exception:
+            return await interaction.followup.send("❌ **ไม่สามารถคำนวณ ID นี้ได้** กรุณาตรวจสอบความถูกต้องอีกครั้ง", ephemeral=True)
+
+        name_display = f"`{target_id}`"
+        avatar_url = None
+        object_type = "ID ทั่วไป / ข้อความ / ช่อง"
+
+        user_obj = bot.get_user(target_id)
+        if user_obj:
+            name_display = f"{user_obj.mention} (`{user_obj.name}`)"
+            avatar_url = user_obj.display_avatar.url
+            object_type = "ผู้ใช้ (User) / บอท (Bot)"
+        else:
+            try:
+                fetched_user = await bot.fetch_user(target_id)
+                if fetched_user:
+                    name_display = f"{fetched_user.mention} (`{fetched_user.name}`)"
+                    avatar_url = fetched_user.display_avatar.url
+                    object_type = "ผู้ใช้ (User) / บอท (Bot)"
+            except Exception:
+                pass
+
+        embed = discord.Embed(
+            title="🔎 DISCORD CHECKER | ผลการตรวจสอบไอดี",
+            description=(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° DiSCORD CHECKER °•.\n"
+                "╭ ·  ระบบคำนวณวันสมัครบัญชีจาก Nexcord Snowflake ID\n"
+                "│ ·  คำนวณวันสมัคร (วันเกิดไอดี) แม่นยำ 100%\n"
+                "│ ·  รองรับ ID ของ ผู้ใช้, บอท, ห้อง และเซิร์ฟเวอร์\n"
+                "╰ ·  พยายามดึงภาพและชื่อผู้ใช้แสดงหากอยู่ในสิทธิ์เข้าถึง\n\n"
+                f"📌 **เป้าหมาย:** {name_display}\n"
+                f"🏷️ **ประเภท:** `{object_type}`\n"
+                f"🆔 **Snowflake ID:** `{target_id}`\n"
+                f"📅 **วันที่สร้างบัญชี:** <t:{unix_ts}:F> (<t:{unix_ts}:R>)"
+            ),
+            color=0x9b59b6
+        )
+
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
+
+        embed.set_footer(text="ICEWEN_2 : Discord Checker System")
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+class CheckerButtonView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="ตรวจสอบ ID",
+        style=discord.ButtonStyle.secondary,
+        emoji="🔍",
+        custom_id="icewen_checker:button"
+    )
+    async def open_checker(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(CheckerModal())
+
+
+@bot.tree.command(name="checker", description="เปิดระบบตรวจสอบวันสร้างไอดี Discord จาก Snowflake ID")
+async def checker_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🔍 DISCORD CHECKER | ตรวจสอบวันสร้างไอดี",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° DiSCORD CHECKER °•.\n"
+            "╭ ·  ระบบคำนวณวันสมัครบัญชีจาก Nexcord Snowflake ID\n"
+            "│ ·  คำนวณวันสมัคร (วันเกิดไอดี) แม่นยำ 100%\n"
+            "│ ·  รองรับ ID ของ ผู้ใช้, บอท, ห้อง และเซิร์ฟเวอร์\n"
+            "╰ ·  พยายามดึงภาพและชื่อผู้ใช้แสดงหากอยู่ในสิทธิ์เข้าถึง\n\n"
+            "📖 **วิธีใช้งานระบบ:**\n"
+            "1. กดปุ่ม **'ตรวจสอบ ID'** ด้านล่าง\n"
+            "2. กรอกตัวเลข Snowflake ID ที่ต้องการตรวจสอบ\n"
+            "3. ระบบจะแสดงประวัติและวันที่สร้างไอดีทันที!"
+        ),
+        color=0x9b59b6
+    )
+    embed.set_image(url="https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg")
+    embed.set_footer(text="ICEWEN_2 : CHECKER SYSTEM")
+
+    await interaction.channel.send(embed=embed, view=CheckerButtonView())
+    await interaction.response.send_message("✅ ส่งหน้าต่าง Discord Checker เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
