@@ -42,7 +42,7 @@ async def change_status():
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
         discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
-        discord.Game(name="ระบบ Member Stats & Webhook พร้อมใช้งาน")
+        discord.Game(name="ระบบ Member Stats & Discord Checker พร้อมใช้งาน")
     ]
     
     if not hasattr(change_status, "index"):
@@ -61,7 +61,7 @@ async def on_ready():
     bot.add_view(TranslateView())
     bot.add_view(WebhookSpamView())
     bot.add_view(CheckerButtonView())
-    bot.add_view(MemberStatsView()) # ลงทะเบียนปุ่มตารางสมาชิกค้างไว้
+    bot.add_view(MemberStatsView())
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -408,7 +408,8 @@ async def checker_command(interaction: discord.Interaction):
         ),
         color=0x9b59b6
     )
-    embed.set_image(url="https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg")
+    # อัปเดตลิงก์รูปภาพใหม่ตามที่คุณต้องการ
+    embed.set_image(url="https://i.pinimg.com/736x/aa/5c/9a/aa5c9ad944e8ab0718692d62b0d72ee3.jpg")
     embed.set_footer(text="ICEWEN_2 : CHECKER SYSTEM")
 
     await interaction.channel.send(embed=embed, view=CheckerButtonView())
