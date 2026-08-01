@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (Dual Channels AI Mode) is running!"
+    return "Frost AI Bot (Clean Commands) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -30,7 +30,6 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 groq_client = Groq(api_key=groq_api_key)
 
-# รองรับหลายห้องต่อ 1 เซิร์ฟเวอร์ (เก็บเป็น List ของ Channel ID)
 allowed_ai_channels = {}
 ai_modes = {} 
 log_channels = {}
@@ -40,7 +39,7 @@ COOLDOWN_TIME = 3.0
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Multi Channel)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Clean Mode)")
     
     if not check_unverified_users.is_running():
         check_unverified_users.start()
@@ -434,27 +433,6 @@ async def ai_chat_menu(interaction: nextcord.Interaction):
     
     view = AIModeSelectView()
     await interaction.followup.send(embed=embed, view=view, ephemeral=True)
-
-
-# คำสั่งพิมพ์เปลี่ยนโหมดแบบรวดเร็ว
-@bot.slash_command(name="ai-mode-polite", description="🌸 เปลี่ยน AI เป็นโหมดสุภาพทันที")
-async def set_mode_polite_cmd(interaction: nextcord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
-    
-    ai_modes[interaction.guild.id] = "polite"
-    await interaction.followup.send("🌸 เปลี่ยนเป็น **'โหมดสุภาพ'** เรียบร้อยแล้วค่ะ!", ephemeral=True)
-
-
-@bot.slash_command(name="ai-mode-toxic", description="😈 เปลี่ยน AI เป็นโหมดสายด่า / ปากแจ๋วทันที")
-async def set_mode_toxic_cmd(interaction: nextcord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
-    
-    ai_modes[interaction.guild.id] = "toxic"
-    await interaction.followup.send("😈 เปลี่ยนเป็น **'โหมดสายด่า / ปากแจ๋ว'** เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 @bot.slash_command(name="ai-ready", description="🌸 ประกาศว่า Frost AI พร้อมใช้งานแล้วในช่องแชท")
