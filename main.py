@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI Modes + Verification + Dropdown Roles + Tickets + Auto-Kick + Clear + Log) is running!"
+    return "Frost AI Bot (Dual AI Mode + Quick Commands) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -30,9 +30,8 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 groq_client = Groq(api_key=groq_api_key)
 
-# ตัวแปรเก็บข้อมูลการตั้งค่าต่างๆ ภายในเซิร์ฟเวอร์
 allowed_ai_channels = {}
-ai_modes = {} # เก็บโหมด AI ของแต่ละเซิร์ฟเวอร์ (ค่าเริ่มต้นเป็น 'polite' หรือ 'toxic')
+ai_modes = {} 
 log_channels = {}
 user_cooldowns = {}
 pending_verifications = {}
@@ -40,14 +39,14 @@ COOLDOWN_TIME = 3.0
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Dual AI Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Fixed Mode)")
     
     if not check_unverified_users.is_running():
         check_unverified_users.start()
 
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลความปลอดภัยและระบบเลือกโหมด AI 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ระบบเลือกโหมด AI (สุภาพ / ปากแจ๋ว) 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
-    print("✅ ตั้งค่าสถานะบอทสำเร็จแล้วค่ะ!")
+    print("✅ บอทพร้อมทำงานแล้วค่ะ!")
 
 
 # ==========================================
@@ -119,7 +118,6 @@ async def check_unverified_users():
                     pass
 
                 await guild.kick(member, reason="ไม่ยืนยันตัวตนภายในเวลา 5 นาที")
-                print(f"👢 เตะสมาชิก {member.name} ออกจากเซิร์ฟเวอร์ {guild.name} เรียบร้อยแล้ว")
             except Exception as e:
                 print(f"❌ เกิดข้อผิดพลาดในการเตะสมาชิก: {e}")
             
@@ -371,7 +369,7 @@ async def setup_ticket(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 7. ระบบตั้งค่าช่องคุยกับ AI และเลือกโหมด (Polite / Toxic)
+# 7. ระบบตั้งค่าช่องคุยกับ AI และเลือกโหมด
 # ==========================================
 @bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
 async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
@@ -388,41 +386,64 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-# ปุ่มสำหรับเลือกโหมด AI (แบบ 2 โหมด)
+# ปุ่มกดเลือกโหมด AI
 class AIModeSelectView(nextcord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @nextcord.ui.button(label="🌸 โหมดสุภาพ (น่ารัก อ่อนหวาน)", style=nextcord.ButtonStyle.green, custom_id="ai_mode_polite")
+    @nextcord.ui.button(label="🌸 โหมดสุภาพ (น่ารัก อ่อนหวาน)", style=nextcord.ButtonStyle.green, custom_id="ai_mode_polite_btn")
     async def set_polite(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.defer(ephemeral=True)
         ai_modes[interaction.guild.id] = "polite"
         await interaction.followup.send("🌸 ตั้งค่า AI เป็น **'โหมดสุภาพ'** เรียบร้อยแล้วค่ะ! พร้อมต้อนรับด้วยความน่ารักสดใส ✨", ephemeral=True)
 
-    @nextcord.ui.button(label="😈 โหมดสายด่า / ปากแจ๋ว (ด่าได้ เถียงได้ สะใจ)", style=nextcord.ButtonStyle.red, custom_id="ai_mode_toxic")
+    @nextcord.ui.button(label="😈 โหมดสายด่า / ปากแจ๋ว", style=nextcord.ButtonStyle.red, custom_id="ai_mode_toxic_btn")
     async def set_toxic(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
         await interaction.response.defer(ephemeral=True)
         ai_modes[interaction.guild.id] = "toxic"
         await interaction.followup.send("😈 ตั้งค่า AI เป็น **'โหมดสายด่า / ปากแจ๋ว'** เรียบร้อยแล้วค่ะ! อยากด่า อยากเถียงจัดมาได้เลยสะใจแน่นอน 🔥", ephemeral=True)
 
 
-@bot.slash_command(name="ai-chat", description="⚙️ เลือกโหมดการสนทนากับ AI (โหมดสุภาพ หรือ โหมดสายด่าปากแจ๋ว)")
+@bot.slash_command(name="ai-chat", description="⚙️ ส่งปุ่มเลือกโหมดการสนทนากับ AI")
 async def ai_chat_menu(interaction: nextcord.Interaction):
     await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะเลือกโหมดนี้ได้ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
 
     current_mode = ai_modes.get(interaction.guild.id, "polite")
     mode_text = "🌸 โหมดสุภาพ (น่ารัก)" if current_mode == "polite" else "😈 โหมดสายด่า / ปากแจ๋ว"
 
     embed = nextcord.Embed(
         title="🤖 ระบบเลือกโหมดสนทนากับ Frost AI",
-        description=f"สถานะโหมดปัจจุบันของเซิร์ฟเวอร์: **{mode_text}**\n\nกรุณาเลือกโหมดที่ต้องการจากปุ่มด้านล่างนี้ได้เลยค่ะ!",
+        description=f"สถานะโหมดปัจจุบันของเซิร์ฟเวอร์: **{mode_text}**\n\nกดปุ่มเลือกโหมดด้านล่างนี้ได้เลยค่ะ!",
         color=nextcord.Color.purple()
     )
     
     view = AIModeSelectView()
     await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+
+# ---------------------------------------------------------
+# คำสั่งพิมพ์เปลี่ยนโหมดแบบรวดเร็ว (ไม่ต้องใช้ปุ่ม)
+# ---------------------------------------------------------
+@bot.slash_command(name="ai-mode-polite", description="🌸 เปลี่ยน AI เป็นโหมดสุภาพทันที")
+async def set_mode_polite_cmd(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+    
+    ai_modes[interaction.guild.id] = "polite"
+    await interaction.followup.send("🌸 เปลี่ยนเป็น **'โหมดสุภาพ'** เรียบร้อยแล้วค่ะ!", ephemeral=True)
+
+
+@bot.slash_command(name="ai-mode-toxic", description="😈 เปลี่ยน AI เป็นโหมดสายด่า / ปากแจ๋วทันที")
+async def set_mode_toxic_cmd(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+    
+    ai_modes[interaction.guild.id] = "toxic"
+    await interaction.followup.send("😈 เปลี่ยนเป็น **'โหมดสายด่า / ปากแจ๋ว'** เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 @bot.slash_command(name="ai-ready", description="🌸 ประกาศว่า Frost AI พร้อมใช้งานแล้วในช่องแชท")
@@ -470,7 +491,6 @@ async def on_message(message):
         user_cooldowns[user_id] = current_time
         user_message = message.content
 
-        # ตรวจสอบโหมดปัจจุบันของเซิร์ฟเวอร์
         current_mode = ai_modes.get(guild_id, "polite")
 
         if current_mode == "toxic":
