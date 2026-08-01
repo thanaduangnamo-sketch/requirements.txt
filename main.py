@@ -311,13 +311,13 @@ async def checktoken_command(interaction: discord.Interaction):
 
 
 # ==========================================
-# 1. ระบบยืนยันตัวตน (Persistent View ใหม่ตามแบบที่คุณต้องการ)
+# 1. ระบบยืนยันตัวตน (Persistent View แบบใหม่)
 # ==========================================
 class PersistentVerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # ปุ่มที่ 1: ยืนยันตัวตน (ให้ยศและแสดงหน้าต่างสำเร็จตามแบบที่ 2)
+    # ปุ่มที่ 1: ยืนยันตัวตน (ให้ยศและแสดงหน้าต่างสำเร็จ)
     @discord.ui.button(
         label="ยืนยันตัวตน",
         style=discord.ButtonStyle.success,
@@ -362,8 +362,7 @@ class PersistentVerifyView(discord.ui.View):
         custom_id="persistent_verify:guide"
     )
     async def guide_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = nextcord.Embed if 'nextcord' in globals() else discord.Embed
-        guide_embed = embed(
+        guide_embed = discord.Embed(
             title="📖 | คู่มือการยืนยันตัวตน",
             description="> 1. กดปุ่ม **'ยืนยันตัวตน'** สีเขียว\n> 2. ระบบจะทำการมอบยศให้อัตโนมัติทันที\n> 3. หากมีปัญหาติดต่อแอดมิน",
             color=0x2b2d31
@@ -388,10 +387,10 @@ async def verify_command(
     embed = discord.Embed(
         description=(
             "+  . ✦ 🐈‍⬛ ' **ระบบยืนยันตัวตน**\n\n"
-            "+  . ✦ 🐉 ' ยืนยันตน<u>ง่ายๆ</u> ระบบคุณภาพ\n"
-            f"+  . ✦ 🐑 ' ยืนยันแล้วจะได้<u>รับบทบาท</u> {role.mention}\n"
-            "+  . ✦ 🐉 ' ยืนยันไม่กี่<u>ขั้นตอน</u>ก็ได้รับบทบาท\n"
-            "+  . ✦ 🐰 ' มีคู่มือการใช้งานระบบแบบ<u>ละเอียด</u>"
+            "+  . ✦ 🐉 ' ยืนยันตน ✨ <u>ง่ายๆ</u> ✨ ระบบคุณภาพ\n"
+            f"+  . ✦ 🐑 ' ยืนยันแล้วจะได้รับบทบาท 👑 {role.mention} 👑\n"
+            "+  . ✦ 🐉 ' ยืนยันไม่กี่ ⚡ <u>ขั้นตอน</u> ⚡ ก็ได้รับบทบาท\n"
+            "+  . ✦ 🐰 ' มีคู่มือการใช้งานระบบแบบ 📚 <u>ละเอียด</u> 📚"
         ),
         color=0x2b2d31
     )
