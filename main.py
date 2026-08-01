@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI + Button Verification + Cooldown) is running!"
+    return "Frost AI Bot (AI + Verification + Self-Roles) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -38,24 +38,23 @@ COOLDOWN_TIME = 3.0  # กำหนดให้รอ 3 วินาทีก่
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Verification Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Self-Role Mode)")
 
     # ตั้งค่าสถานะบอท
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลความเรียบร้อยและคุยกับทุกคน 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลเซิร์ฟเวอร์และระบบเลือกยศ 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
     print("✅ ตั้งค่าสถานะบอทสำเร็จแล้วค่ะ!")
 
 
 # ==========================================
-# ระบบปุ่มยืนยันตัวตน (Button Verification View)
+# 1. ระบบปุ่มยืนยันตัวตน (Verification View)
 # ==========================================
 class VerificationView(nextcord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None) # ให้ปุ่มกดได้ตลอดเวลาไม่หมดอายุ
+        super().__init__(timeout=None)
 
     @nextcord.ui.button(label="✅ ยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button")
     async def verify(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        # ค้นหายศ "Verified" หรือยศสมาชิกในเซิร์ฟเวอร์ (สามารถเปลี่ยนชื่อยศได้ตามต้องการ)
         role = nextcord.utils.get(interaction.guild.roles, name="Verified")
         
         if not role:
@@ -68,7 +67,6 @@ class VerificationView(nextcord.ui.View):
             await interaction.response.send_message("🎉 ยืนยันตัวตนสำเร็จแล้วค่ะ! ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์นะคะ 💖", ephemeral=True)
 
 
-# คำสั่งสำหรับแอดมินเพื่อส่ง Embed และปุ่มยืนยันตัวตน
 @bot.slash_command(name="setup-verification", description="🛡️ ส่งข้อความและปุ่มยืนยันตัวตนสำหรับสมาชิกใหม่")
 async def setup_verification(interaction: nextcord.Interaction):
     if not interaction.user.guild_permissions.administrator:
@@ -87,7 +85,59 @@ async def setup_verification(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# ระบบตั้งค่าช่องคุยกับ Frost AI
+# 2. ระบบเลือกยศด้วยปุ่ม (Self-Roles View)
+# ==========================================
+class SelfRoleView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @nextcord.ui.button(label="🎮 Gamer", style=nextcord.ButtonStyle.primary, custom_id="role_gamer")
+    async def role_gamer(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await self.toggle_role(interaction, "Gamer")
+
+    @nextcord.ui.button(label="📢 Announce", style=nextcord.ButtonStyle.secondary, custom_id="role_announce")
+    async def role_announce(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await self.toggle_role(interaction, "Announce")
+
+    @nextcord.ui.button(label="🎵 Music Lover", style=nextcord.ButtonStyle.success, custom_id="role_music")
+    async def role_music(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await self.toggle_role(interaction, "Music Lover")
+
+    async def toggle_role(self, interaction: nextcord.Interaction, role_name: str):
+        role = nextcord.utils.get(interaction.guild.roles, name=role_name)
+        if not role:
+            return await interaction.response.send_message(f"❌ ไม่พบยศชื่อ `{role_name}` ในเซิร์ฟเวอร์นี้ รบกวนให้แอดมินสร้างยศนี้ก่อนนะคะ!", ephemeral=True)
+
+        if role in interaction.user.roles:
+            await interaction.user.remove_roles(role)
+            await interaction.response.send_message(f"📤 เอาออกยศ **{role_name}** ให้เรียบร้อยแล้วค่ะ", ephemeral=True)
+        else:
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message(f"📥 มอบยศ **{role_name}** ให้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+
+
+@bot.slash_command(name="setup-selfroles", description="🏷️ สร้างเมนูปุ่มกดเลือกยศด้วยตัวเองสำหรับสมาชิก")
+async def setup_selfroles(interaction: nextcord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+
+    embed = nextcord.Embed(
+        title="🏷️ ระบบเลือกยศด้วยตนเอง (Self-Roles)",
+        description="กดปุ่มด้านล่างนี้เพื่อ **รับ หรือ ถอด** ยศความสนใจได้ด้วยตัวเองเลยค่ะ!\n\n"
+                    "• 🎮 **Gamer** - สำหรับสายเล่นเกม\n"
+                    "• 📢 **Announce** - สำหรับรับข่าวสารประกาศ\n"
+                    "• 🎵 **Music Lover** - สำหรับคนรักเสียงเพลง",
+        color=nextcord.Color.purple()
+    )
+    embed.set_footer(text="กดซ้ำเพื่อถอดออก หรือกดเพื่อรับยศ 🌸")
+
+    view = SelfRoleView()
+    await interaction.channel.send(embed=embed, view=view)
+    await interaction.response.send_message("✅ สร้างเมนูปุ่มเลือกยศในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+
+
+# ==========================================
+# 3. ระบบตั้งค่าช่องคุยกับ Frost AI
 # ==========================================
 @bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
 async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
@@ -105,7 +155,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
+# 4. ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -119,7 +169,6 @@ async def on_message(message):
         user_id = message.author.id
         current_time = time.time()
 
-        # ตรวจสอบระบบ Cooldown ป้องกันคนพิมพ์สแปมรัวๆ
         if user_id in user_cooldowns:
             elapsed_time = current_time - user_cooldowns[user_id]
             if elapsed_time < COOLDOWN_TIME:
