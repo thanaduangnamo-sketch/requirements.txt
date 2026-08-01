@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI + Verification + Dropdown Roles with New Image) is running!"
+    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -38,10 +38,10 @@ COOLDOWN_TIME = 3.0  # กำหนดให้รอ 3 วินาทีก่
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - New Image Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Full Features Mode)")
 
     # ตั้งค่าสถานะบอท
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ระบบยืนยันตัวตนและเลือกยศ 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลระบบยืนยันตัวตน ยศ และ Tickets 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
     print("✅ ตั้งค่าสถานะบอทสำเร็จแล้วค่ะ!")
 
@@ -67,7 +67,7 @@ class VerificationView(nextcord.ui.View):
             await interaction.response.send_message("🎉 ยืนยันตัวตนสำเร็จแล้วค่ะ! ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์นะคะ 💖", ephemeral=True)
 
 
-@bot.slash_command(name="setup-verification", description="🛡️ ส่งข้อความ, รูปภาพใหม่ และปุ่มยืนยันตัวตนสำหรับสมาชิกใหม่")
+@bot.slash_command(name="setup-verification", description="🛡️ ส่งข้อความ, รูปภาพยืนยันตัวตนใหม่ และปุ่มสำหรับสมาชิกใหม่")
 async def setup_verification(interaction: nextcord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
@@ -77,17 +77,17 @@ async def setup_verification(interaction: nextcord.Interaction):
         description="กรุณากดปุ่ม **'✅ ยืนยันตัวตน'** ด้านล่างนี้ เพื่อรับยศและปลดล็อกห้องพูดคุยทั้งหมดภายในเซิร์ฟเวอร์ของเราค่ะ!",
         color=nextcord.Color.blurple()
     )
-    # อัปเดตรูปภาพใหม่ตามที่คุณส่งมา
-    embed.set_image(url="https://i.pinimg.com/736x/57/6b/75/576b75f28cd7812560fd2984e3af10c3.jpg")
+    # รูปภาพใหม่สำหรับยืนยันตัวตนตามที่คุณขอ
+    embed.set_image(url="https://i.pinimg.com/1200x/19/b3/90/19b390db882386287fb4a5f4e7d4177e.jpg")
     embed.set_footer(text="ระบบยืนยันตัวตนแบบรวดเร็วและปลอดภัย 🌸")
 
     view = VerificationView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างระบบปุ่มยืนยันตัวตนพร้อมรูปภาพใหม่ในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.response.send_message("✅ สร้างระบบปุ่มยืนยันตัวตนในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 2. ระบบเลือกยศแบบเมนูเลือกลงมา (Role Dropdown Select Menu + รูปภาพใหม่)
+# 2. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown)
 # ==========================================
 class RoleSelect(nextcord.ui.Select):
     def __init__(self):
@@ -119,7 +119,7 @@ class RoleSelectView(nextcord.ui.View):
         self.add_item(RoleSelect())
 
 
-@bot.slash_command(name="setup-selfroles", description="🏷️ ส่งเมนูดรอปดาวน์เลือกยศพร้อมรูปภาพใหม่")
+@bot.slash_command(name="setup-selfroles", description="🏷️ ส่งเมนูดรอปดาวน์เลือกยศพร้อมรูปภาพ")
 async def setup_selfroles(interaction: nextcord.Interaction):
     if not interaction.user.guild_permissions.administrator:
         return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
@@ -132,22 +132,94 @@ async def setup_selfroles(interaction: nextcord.Interaction):
                     "• 🎵 **Music Lover** - สำหรับคนรักเสียงเพลง",
         color=nextcord.Color.purple()
     )
-    # อัปเดตรูปภาพใหม่ตามที่คุณส่งมา
     embed.set_image(url="https://i.pinimg.com/736x/57/6b/75/576b75f28cd7812560fd2984e3af10c3.jpg")
     embed.set_footer(text="เลือกซ้ำเพื่อถอดออก หรือเลือกเพื่อรับยศ 🌸")
 
     view = RoleSelectView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างเมนูดรอปดาวน์เลือกยศพร้อมรูปภาพใหม่ในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.response.send_message("✅ สร้างเมนูดรอปดาวน์เลือกยศในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 3. ระบบตั้งค่าช่องคุยกับ Frost AI
+# 3. ระบบ Tickets (สร้างห้องคุยส่วนตัว)
+# ==========================================
+class CloseTicketView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @nextcord.ui.button(label="🔒 ปิดห้อง Ticket", style=nextcord.ButtonStyle.red, custom_id="close_ticket_btn")
+    async def close_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.send_message("🔒 กำลังปิดห้อง Ticket นี้ใน 5 วินาที...", ephemeral=False)
+        time.sleep(2)
+        await interaction.channel.delete()
+
+
+class TicketView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @nextcord.ui.button(label="🎫 เปิด Ticket (ติดต่อแอดมิน)", style=nextcord.ButtonStyle.primary, custom_id="create_ticket_btn")
+    async def create_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        guild = interaction.guild
+        member = interaction.user
+
+        # ตรวจสอบว่ามีห้องของ user นี้อยู่แล้วหรือยัง
+        existing_channel = nextcord.utils.get(guild.text_channels, name=f"ticket-{member.name.lower()}")
+        if existing_channel:
+            return await interaction.response.send_message(f"❌ คุณมีห้อง Ticket เปิดไว้อยู่แล้วค่ะ: {existing_channel.mention}", ephemeral=True)
+
+        # กำหนดสิทธิ์การมองเห็นห้อง (เห็นเฉพาะตัว User และ Admin)
+        overwrites = {
+            guild.default_role: nextcord.PermissionOverwrite(view_channel=False),
+            member: nextcord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: nextcord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
+        }
+
+        # สร้างห้องในหมวดหมู่เดิม หรือสร้างห้องใหม่
+        ticket_channel = await guild.create_text_channel(
+            name=f"ticket-{member.name}",
+            overwrites=overwrites,
+            topic=f"Ticket ของคุณ {member.name} ({member.id})"
+        )
+
+        embed = nextcord.Embed(
+            title=f"🎫 Ticket ของคุณ {member.name}",
+            description="สวัสดีค่ะ! แจ้งปัญหาหรือเรื่องที่ต้องการติดต่อกับแอดมินไว้ได้เลยนะคะ\nแอดมินจะรีบเข้ามาช่วยเหลือโดยเร็วที่สุดค่ะ 🌸",
+            color=nextcord.Color.green()
+        )
+        embed.set_footer(text="กดปุ่มด้านล่างนี้เพื่อปิดห้องเมื่อเสร็จสิ้นธุระ")
+
+        view = CloseTicketView()
+        await ticket_channel.send(content=f"{member.mention} ยินดีต้อนรับสู่ Ticket ค่ะ!", embed=embed, view=view)
+        await interaction.response.send_message(f"✨ สร้างห้อง Ticket ส่วนตัวให้คุณแล้วค่ะ: {ticket_channel.mention}", ephemeral=True)
+
+
+@bot.slash_command(name="setup-ticket", description="🎫 ส่งข้อความ, รูปภาพ Tickets และปุ่มเปิดห้องส่วนตัว")
+async def setup_ticket(interaction: nextcord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+
+    embed = nextcord.Embed(
+        title="🎫 ศูนย์ช่วยเหลือและติดต่อแอดมิน (Tickets)",
+        description="หากคุณมีปัญหา ติดต่อสอบถาม หรือต้องการแจ้งเรื่องต่างๆ สามารถกดปุ่ม **'🎫 เปิด Ticket'** ด้านล่างนี้เพื่อสร้างห้องพูดคุยส่วนตัวกับทีมงานได้เลยค่ะ!",
+        color=nextcord.Color.gold()
+    )
+    # รูปภาพใหม่สำหรับ Tickets ตามที่คุณขอ
+    embed.set_image(url="https://i.pinimg.com/1200x/ad/80/97/ad80973abc102722c5d27cb68bcd1363.jpg")
+    embed.set_footer(text="ระบบห้องส่วนตัวปลอดภัยและเป็นความลับ 🌸")
+
+    view = TicketView()
+    await interaction.channel.send(embed=embed, view=view)
+    await interaction.response.send_message("✅ สร้างระบบ Tickets ในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+
+
+# ==========================================
+# 4. ระบบตั้งค่าช่องคุยกับ Frost AI
 # ==========================================
 @bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
 async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
+        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
 
     allowed_ai_channels[interaction.guild.id] = channel.id
     
@@ -160,7 +232,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
 
 
 # ==========================================
-# 4. ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
+# 5. ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
 # ==========================================
 @bot.event
 async def on_message(message):
