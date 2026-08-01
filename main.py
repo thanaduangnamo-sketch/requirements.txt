@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets + Auto-Kick + Clear + Log + No-Timeout) is running!"
+    return "Frost AI Bot (AI Modes + Verification + Dropdown Roles + Tickets + Auto-Kick + Clear + Log) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -25,15 +25,14 @@ def keep_alive():
 token = os.environ.get("DISCORD_TOKEN")
 groq_api_key = os.environ.get("GROQ_API_KEY")
 
-# เปิด Intents ทั้งหมด
 intents = nextcord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ตั้งค่า Groq Client
 groq_client = Groq(api_key=groq_api_key)
 
 # ตัวแปรเก็บข้อมูลการตั้งค่าต่างๆ ภายในเซิร์ฟเวอร์
 allowed_ai_channels = {}
+ai_modes = {} # เก็บโหมด AI ของแต่ละเซิร์ฟเวอร์ (ค่าเริ่มต้นเป็น 'polite' หรือ 'toxic')
 log_channels = {}
 user_cooldowns = {}
 pending_verifications = {}
@@ -41,14 +40,14 @@ COOLDOWN_TIME = 3.0
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - No Timeout Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Dual AI Mode)")
     
     if not check_unverified_users.is_running():
         check_unverified_users.start()
 
-    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลความปลอดภัย บันทึก Log และระบบยืนยันตัวตน 🌸")
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลความปลอดภัยและระบบเลือกโหมด AI 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
-    print("✅ ตั้งค่าสถานะบอทและระบบป้องกันทั้งหมดสำเร็จแล้วค่ะ!")
+    print("✅ ตั้งค่าสถานะบอทสำเร็จแล้วค่ะ!")
 
 
 # ==========================================
@@ -173,8 +172,9 @@ async def on_message_edit(before, after):
 
 @bot.slash_command(name="set-log-channel", description="📊 กำหนดช่องสำหรับบันทึก Log กิจกรรมในเซิร์ฟเวอร์")
 async def set_log_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
+    await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
 
     log_channels[interaction.guild.id] = channel.id
     embed = nextcord.Embed(
@@ -182,7 +182,7 @@ async def set_log_channel(interaction: nextcord.Interaction, channel: nextcord.T
         description=f"กิจกรรมทั้งหมดในเซิร์ฟเวอร์จะถูกบันทึกไว้ที่ห้อง {channel.mention} เรียบร้อยค่ะ!",
         color=nextcord.Color.pink()
     )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # ==========================================
@@ -190,19 +190,19 @@ async def set_log_channel(interaction: nextcord.Interaction, channel: nextcord.T
 # ==========================================
 @bot.slash_command(name="clear", description="🧹 ลบข้อความที่ไม่เหมาะสมหรือไม่จำเป็นในห้องแชท")
 async def clear(interaction: nextcord.Interaction, amount: int = 10):
+    await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.manage_messages:
-        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ในการจัดการข้อความ (Manage Messages) ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ คุณไม่มีสิทธิ์ในการจัดการข้อความ (Manage Messages) ค่ะ", ephemeral=True)
 
     if amount < 1 or amount > 100:
-        return await interaction.response.send_message("❌ กรุณาระบุจำนวนข้อความที่ต้องการลบระหว่าง **1 ถึง 100** ข้อความนะคะ", ephemeral=True)
+        return await interaction.followup.send("❌ กรุณาระบุจำนวนข้อความที่ต้องการลบระหว่าง **1 ถึง 100** ข้อความนะคะ", ephemeral=True)
 
-    await interaction.response.defer(ephemeral=True)
     deleted = await interaction.channel.purge(limit=amount)
     await interaction.followup.send(f"🧹 ทำการลบข้อความที่ไม่จำเป็นออก **{len(deleted)} ข้อความ** เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 4. ระบบปุ่มยืนยันตัวตน (Verification - ป้องกัน Timeout)
+# 4. ระบบปุ่มยืนยันตัวตน (Verification)
 # ==========================================
 class VerificationView(nextcord.ui.View):
     def __init__(self):
@@ -210,7 +210,7 @@ class VerificationView(nextcord.ui.View):
 
     @nextcord.ui.button(label="✅ ยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button")
     async def verify(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True) # ป้องกันแอปพลิเคชันไม่ตอบสนอง
+        await interaction.response.defer(ephemeral=True)
         role = nextcord.utils.get(interaction.guild.roles, name="Verified")
         
         if not role:
@@ -226,8 +226,9 @@ class VerificationView(nextcord.ui.View):
 
 @bot.slash_command(name="setup-verification", description="🛡️ ส่งข้อความ, รูปภาพยืนยันตัวตน และปุ่มสำหรับสมาชิกใหม่")
 async def setup_verification(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
 
     embed = nextcord.Embed(
         title="🛡️ ยืนยันตัวตนเพื่อเข้าสู่เซิร์ฟเวอร์",
@@ -239,11 +240,11 @@ async def setup_verification(interaction: nextcord.Interaction):
 
     view = VerificationView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างระบบปุ่มยืนยันตัวตนและเปิดใช้งานระบบตรวจสอบ 5 นาทีเรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.followup.send("✅ สร้างระบบปุ่มยืนยันตัวตนและเปิดใช้งานระบบตรวจสอบ 5 นาทีเรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 5. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown - ป้องกัน Timeout)
+# 5. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown)
 # ==========================================
 class RoleSelect(nextcord.ui.Select):
     def __init__(self):
@@ -255,7 +256,7 @@ class RoleSelect(nextcord.ui.Select):
         super().__init__(placeholder="📌 เลือกยศที่คุณต้องการที่นี่...", min_values=1, max_values=1, options=options, custom_id="role_select_menu")
 
     async def callback(self, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True) # ป้องกันแอปพลิเคชันไม่ตอบสนอง
+        await interaction.response.defer(ephemeral=True)
         selected_role_name = self.values[0]
         role = nextcord.utils.get(interaction.guild.roles, name=selected_role_name)
 
@@ -278,8 +279,9 @@ class RoleSelectView(nextcord.ui.View):
 
 @bot.slash_command(name="setup-selfroles", description="🏷️ ส่งเมนูดรอปดาวน์เลือกยศพร้อมรูปภาพ")
 async def setup_selfroles(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
 
     embed = nextcord.Embed(
         title="🏷️ ระบบเลือกยศด้วยตนเอง (Self-Roles)",
@@ -294,11 +296,11 @@ async def setup_selfroles(interaction: nextcord.Interaction):
 
     view = RoleSelectView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างเมนูดรอปดาวน์เลือกยศในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.followup.send("✅ สร้างเมนูดรอปดาวน์เลือกยศในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 6. ระบบ Tickets (สร้างห้องคุยส่วนตัว - ป้องกัน Timeout)
+# 6. ระบบ Tickets
 # ==========================================
 class CloseTicketView(nextcord.ui.View):
     def __init__(self):
@@ -317,7 +319,7 @@ class TicketView(nextcord.ui.View):
 
     @nextcord.ui.button(label="🎫 เปิด Ticket (ติดต่อแอดมิน)", style=nextcord.ButtonStyle.primary, custom_id="create_ticket_btn")
     async def create_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        await interaction.response.defer(ephemeral=True) # ป้องกันแอปพลิเคชันไม่ตอบสนอง
+        await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
         member = interaction.user
 
@@ -351,8 +353,9 @@ class TicketView(nextcord.ui.View):
 
 @bot.slash_command(name="setup-ticket", description="🎫 ส่งข้อความ, รูปภาพ Tickets และปุ่มเปิดห้องส่วนตัว")
 async def setup_ticket(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
 
     embed = nextcord.Embed(
         title="🎫 ศูนย์ช่วยเหลือและติดต่อแอดมิน (Tickets)",
@@ -364,47 +367,85 @@ async def setup_ticket(interaction: nextcord.Interaction):
 
     view = TicketView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างระบบ Tickets ในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.followup.send("✅ สร้างระบบ Tickets ในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 7. ระบบตั้งค่าช่องคุยกับ AI และคำสั่ง AI Ready
+# 7. ระบบตั้งค่าช่องคุยกับ AI และเลือกโหมด (Polite / Toxic)
 # ==========================================
 @bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
 async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
+    await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะตั้งค่าได้ค่ะ", ephemeral=True)
 
     allowed_ai_channels[interaction.guild.id] = channel.id
-    
     embed = nextcord.Embed(
         title="🌸 ตั้งค่าช่อง Frost AI สำเร็จแล้วค่ะ",
         description=f"พูดคุยกับฟรอยด์ได้ที่ช่อง {channel.mention} เลยนะคะ!",
         color=nextcord.Color.pink()
     )
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
+# ปุ่มสำหรับเลือกโหมด AI (แบบ 2 โหมด)
+class AIModeSelectView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @nextcord.ui.button(label="🌸 โหมดสุภาพ (น่ารัก อ่อนหวาน)", style=nextcord.ButtonStyle.green, custom_id="ai_mode_polite")
+    async def set_polite(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        ai_modes[interaction.guild.id] = "polite"
+        await interaction.followup.send("🌸 ตั้งค่า AI เป็น **'โหมดสุภาพ'** เรียบร้อยแล้วค่ะ! พร้อมต้อนรับด้วยความน่ารักสดใส ✨", ephemeral=True)
+
+    @nextcord.ui.button(label="😈 โหมดสายด่า / ปากแจ๋ว (ด่าได้ เถียงได้ สะใจ)", style=nextcord.ButtonStyle.red, custom_id="ai_mode_toxic")
+    async def set_toxic(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        ai_modes[interaction.guild.id] = "toxic"
+        await interaction.followup.send("😈 ตั้งค่า AI เป็น **'โหมดสายด่า / ปากแจ๋ว'** เรียบร้อยแล้วค่ะ! อยากด่า อยากเถียงจัดมาได้เลยสะใจแน่นอน 🔥", ephemeral=True)
+
+
+@bot.slash_command(name="ai-chat", description="⚙️ เลือกโหมดการสนทนากับ AI (โหมดสุภาพ หรือ โหมดสายด่าปากแจ๋ว)")
+async def ai_chat_menu(interaction: nextcord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะเลือกโหมดนี้ได้ค่ะ", ephemeral=True)
+
+    current_mode = ai_modes.get(interaction.guild.id, "polite")
+    mode_text = "🌸 โหมดสุภาพ (น่ารัก)" if current_mode == "polite" else "😈 โหมดสายด่า / ปากแจ๋ว"
+
+    embed = nextcord.Embed(
+        title="🤖 ระบบเลือกโหมดสนทนากับ Frost AI",
+        description=f"สถานะโหมดปัจจุบันของเซิร์ฟเวอร์: **{mode_text}**\n\nกรุณาเลือกโหมดที่ต้องการจากปุ่มด้านล่างนี้ได้เลยค่ะ!",
+        color=nextcord.Color.purple()
+    )
+    
+    view = AIModeSelectView()
+    await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 
 @bot.slash_command(name="ai-ready", description="🌸 ประกาศว่า Frost AI พร้อมใช้งานแล้วในช่องแชท")
 async def ai_ready(interaction: nextcord.Interaction, channel: nextcord.TextChannel = None):
+    await interaction.response.defer(ephemeral=True)
     if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+        return await interaction.followup.send("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
     
     target_channel = channel if channel else interaction.channel
 
     embed = nextcord.Embed(
         title="🌸 Frost AI พร้อมใช้งานแล้วงับ!",
-        description="ตอนนี้น้องฟรอยด์พร้อมคุยกับทุกคนแล้วนะคะ พิมพ์ทักทายหรือถามคำถามมาได้เลยงับ 💖\nคอยดูแลทั้งระบบความปลอดภัยและตอบคำถามอย่างเต็มที่เลยค่ะ!",
+        description="ตอนนี้น้องฟรอยด์พร้อมคุยกับทุกคนแล้วนะคะ พิมพ์ทักทายหรือถามคำถามมาได้เลยงับ 💖",
         color=nextcord.Color.pink()
     )
     embed.set_footer(text="ระบบ AI อัจฉริยะ 🌸")
 
     await target_channel.send(embed=embed)
-    await interaction.response.send_message(f"✅ ส่งข้อความประกาศ AI พร้อมใช้งานไปที่ {target_channel.mention} เรียบร้อยแล้วค่ะ!", ephemeral=True)
+    await interaction.followup.send(f"✅ ส่งข้อความประกาศ AI พร้อมใช้งานไปที่ {target_channel.mention} เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
-# 8. ระบบพูดคุยโต้ตอบกับ Frost AI (พร้อมระบบกันสแปม Cooldown)
+# 8. ระบบพูดคุยโต้ตอบกับ AI ตามโหมดที่เลือก
 # ==========================================
 @bot.event
 async def on_message(message):
@@ -422,12 +463,26 @@ async def on_message(message):
             elapsed_time = current_time - user_cooldowns[user_id]
             if elapsed_time < COOLDOWN_TIME:
                 remaining = round(COOLDOWN_TIME - elapsed_time, 1)
-                warning_msg = await message.channel.send(f"⏳ ใจเย็นๆ ก่อนนะคะคุณ {message.author.name} รออีก **{remaining} วินาที** ค่อยพิมพ์คุยกับฟรอยด์ใหม่น้า 🥺")
+                warning_msg = await message.channel.send(f"⏳ ใจเย็นๆ ก่อนนะคะคุณ {message.author.name} รออีก **{remaining} วินาที** ค่อยพิมพ์คุยใหม่น้า 🥺")
                 await warning_msg.delete(delay=3)
                 return
 
         user_cooldowns[user_id] = current_time
         user_message = message.content
+
+        # ตรวจสอบโหมดปัจจุบันของเซิร์ฟเวอร์
+        current_mode = ai_modes.get(guild_id, "polite")
+
+        if current_mode == "toxic":
+            system_prompt = (
+                "คุณคือ AI สายปากแจ๋ว กวนโอ๊ย และพร้อมบวก ปากจัด ด่าเก่ง เถียงคำไม่ตกฟาก พูดจาหยาบคายได้นิดหน่อยตามฟีลเพื่อนเกรียนๆ "
+                "ชอบแซะ ชอบกวนประสาทคนที่ทักมา แต่ก็ยังให้ข้อมูลหรือตอบคำถามได้ปกติ ห้ามเรียบร้อยเด็ดขาด ต้องมีความกวนบาทาและดิบเถื่อนแบบวัยรุ่นสร้างตัว"
+            )
+        else:
+            system_prompt = (
+                "คุณคือ 'Frost AI' ผู้ช่วยสาวสวยสุดน่ารัก เป็นกันเอง พูดจาไพเราะ มีหางเสียงค่ะ/คะ ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด "
+                "คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ ตอบข้อมูลได้ละเอียดและครบถ้วน"
+            )
 
         async with message.channel.typing():
             try:
@@ -436,20 +491,20 @@ async def on_message(message):
                     messages=[
                         {
                             "role": "system",
-                            "content": "คุณคือ 'Frost AI' ผู้ช่วยสาวสวยสุดน่ารัก เป็นกันเอง พูดจาไพเราะ มีหางเสียงค่ะ/คะ ชอบยิ้มแย้มและเป็นมิตรกับทุกคนในดิสคอร์ด คุยเก่ง อบอุ่น และคอยช่วยเหลือสมาชิกด้วยความเต็มใจเสมอ ตอบข้อมูลได้ละเอียดและครบถ้วน"
+                            "content": system_prompt
                         },
                         {
                             "role": "user",
                             "content": f"ผู้ใช้ชื่อ {message.author.name} พูดว่า: {user_message}"
                         }
                     ],
-                    temperature=0.7,
+                    temperature=0.8,
                     max_tokens=2048
                 )
                 ai_reply = response.choices[0].message.content
                 
             except Exception as e:
-                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้สมองกล Groq ของฟรอยด์เชื่อมต่อไม่สำเร็จค่ะ 🥺 (Error: {e})"
+                ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้สมองกลเชื่อมต่อไม่สำเร็จค่ะ 🥺 (Error: {e})"
 
         if len(ai_reply) > 2000:
             for i in range(0, len(ai_reply), 2000):
