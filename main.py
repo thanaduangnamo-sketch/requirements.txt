@@ -131,7 +131,7 @@ async def change_status():
 
 @bot.event
 async def on_ready():
-    bot.add_view(PersistentVerifyView())
+    bot.add_view(PersistentVerifyView(None)) # ลงทะเบียนรองรับ Dynamic Role
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
     bot.add_view(TokenCheckerView())
@@ -389,18 +389,25 @@ async def checktoken_command(interaction: discord.Interaction):
 
 
 # ==========================================
-# 1. ระบบยืนยันตัวตน (ดีไซน์สไตล์ Rain Drops แบบในภาพ)
+# 1. ระบบยืนยันตัวตน (เลือกยศผ่านคำสั่ง / ได้ทันที)
 # ==========================================
 class PersistentVerifyView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, role_id: int = None):
         super().__init__(timeout=None)
+        self.role_id = role_id
 
     @discord.ui.button(label="【 ☁️ กดเพื่อยืนยันตัวตน 】", style=discord.ButtonStyle.success, emoji="🟢", custom_id="persistent_verify:button")
     async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        role = discord.utils.get(interaction.guild.roles, name="Verified") or discord.utils.get(interaction.guild.roles, name="Member")
+        # ดึงยศจาก ID ที่ตั้งค่าไว้ตอนใช้คำสั่ง (ถ้าไม่มีสำรองหาจากชื่อ 'Verified' หรือ 'Member')
+        role = None
+        if self.role_id:
+            role = interaction.guild.get_role(self.role_id)
         
         if not role:
-            return await interaction.response.send_message("❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ (ตั้งชื่อยศ 'Verified' หรือ 'Member')", ephemeral=True)
+            role = discord.utils.get(interaction.guild.roles, name="Verified") or discord.utils.get(interaction.guild.roles, name="Member")
+        
+        if not role:
+            return await interaction.response.send_message("❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ กรุณาติดต่อแอดมิน", ephemeral=True)
 
         if role in interaction.user.roles:
             await interaction.user.remove_roles(role)
@@ -410,14 +417,17 @@ class PersistentVerifyView(discord.ui.View):
         await interaction.response.send_message(f"✅ คุณได้รับยศ **{role.name}** เรียบร้อยแล้วครับ!", ephemeral=True)
 
 
-@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนดีไซน์สวยงามสไตล์ Rain Drops")
-@app_commands.describe(image_url="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)")
-async def verify_command(interaction: discord.Interaction, image_url: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
+@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนเลือกยศได้ทันทีผ่านคำสั่ง")
+@app_commands.describe(
+    role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับเมื่อกดปุ่ม", 
+    image_url="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)"
+)
+async def verify_command(interaction: discord.Interaction, role: discord.Role, image_url: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
     embed = discord.Embed(
         title="💬 ระบบยืนยันตัวตน",
         description=(
             ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•.\n\n"
-            "🟢 : กดปุ่มด้านล่างเพื่อยืนยันตัวตนรับยศ\n"
+            f"🟢 : กดปุ่มด้านล่างเพื่อยืนยันตัวตนรับยศ **{role.name}**\n"
             "🟢 : กดปุ่มซ้ำ เพื่อคืนยศ\n\n"
             ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•."
         ),
@@ -429,10 +439,10 @@ async def verify_command(interaction: discord.Interaction, image_url: str = "htt
         
     embed.set_footer(text="© VERIFY BOT")
 
-    view = PersistentVerifyView()
+    view = PersistentVerifyView(role.id)
 
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างหน้าต่างระบบยืนยันตัวตนเรียบร้อยแล้วครับ", ephemeral=True)
+    await interaction.response.send_message(f"✅ สร้างหน้าต่างระบบยืนยันตัวตน (ยศ: {role.name}) เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
