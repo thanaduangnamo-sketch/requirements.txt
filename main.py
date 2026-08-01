@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 import os
+import aiohttp
 from flask import Flask
 from threading import Thread
 
@@ -27,7 +28,7 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 intents.members = True
-intents.moderation = True # สำหรับดึง Audit Log ตรวจสอบคนดึงบอท
+intents.moderation = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
@@ -79,16 +80,14 @@ async def on_ready():
 # ==========================================
 @bot.event
 async def on_member_join(member: discord.Member):
-    # ตรวจสอบว่าสมาชิกใหม่ที่เข้ามาเป็น "บอท" หรือไม่
     if member.bot:
         guild = member.guild
-        target_channel_id = 1533086872471994489  # ห้องไอดีที่คุณกำหนด
+        target_channel_id = 1533086872471994489
         target_channel = guild.get_channel(target_channel_id)
 
         if not target_channel:
             return
 
-        # ค้นหาว่าใครเป็นคนเชิญบอทตัวนี้เข้ามาจาก Audit Log
         inviter = "ไม่ทราบ (อาจใช้ลิงก์ OAuth2 ลับ หรือดึงตรง)"
         try:
             async for entry in guild.audit_logs(action=discord.AuditLogAction.bot_add, limit=1):
@@ -98,7 +97,6 @@ async def on_member_join(member: discord.Member):
         except Exception as e:
             print(f"ไม่สามารถดึง Audit Log ได้: {e}")
 
-        # สร้าง Embed แจ้งเตือนสุดเท่
         embed = discord.Embed(
             title="🚨 มีการเพิ่มบอทตัวใหม่เข้าสู่เซิร์ฟเวอร์!",
             description=(
@@ -113,6 +111,132 @@ async def on_member_join(member: discord.Member):
         embed.set_footer(text=f"เซิร์ฟเวอร์: {guild.name}", icon_url=guild.icon.url if guild.icon else None)
 
         await target_channel.send(embed=embed)
+
+
+# ==========================================
+# 🔍 ระบบ TOKEN CHECKER (Modal & API Check)
+# ==========================================
+class TokenModal(discord.ui.Modal, title="ICEWEN_2 : TOKEN CHECKER"):
+    token_input = discord.ui.TextInput(
+        label="กรอก Discord Token ที่ต้องการตรวจสอบ",
+        style=discord.TextStyle.paragraph,
+        placeholder="วาง Token ของคุณลงที่นี่...",
+        required=True,
+        max_length=200
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        raw_token = self.token_input.value.strip()
+
+        # กำหนด Headers (รองรับทั้ง User Token และ Bot Token)
+        headers = {
+            "Authorization": raw_token,
+            "Content-Type": "application/json"
+        }
+
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://discord.com/api/v9/users/@me", headers=headers) as resp:
+                if resp.status != 200:
+                    return await interaction.followup.send(
+                        "❌ **Token ไม่ถูกต้องหรือหมดอายุแล้ว!** กรุณาตรวจสอบความถูกต้องอีกครั้ง",
+                        ephemeral=True
+                    )
+                user_data = await resp.json()
+
+        # ดึงข้อมูลพื้นฐาน
+        username = user_data.get("username", "Unknown")
+        discriminator = user_data.get("discriminator", "0")
+        full_name = f"{username}#{discriminator}" if discriminator != "0" else username
+        user_id = user_data.get("id", "Unknown")
+        email = user_data.get("email", "ไม่มีข้อมูล / ซ่อนอยู่")
+        phone = user_data.get("phone", "ไม่มีข้อมูล / ซ่อนอยู่")
+        mfa_enabled = "เปิดใช้งาน (2FA)" if user_data.get("mfa_enabled") else "ปิดใช้งาน"
+        verified = "ยืนยันแล้ว" if user_data.get("verified") else "ยังไม่ยืนยัน"
+        
+        # แยกประเภทบัญชี (Bot / User)
+        is_bot = user_data.get("bot", False)
+        acc_type = "🤖 Bot Account" if is_bot else "👤 User Account"
+
+        # ตรวจสอบ Nitro
+        nitro_type = user_data.get("premium_type", 0)
+        nitro_map = {0: "ไม่มี Nitro", 1: "Nitro Classic", 2: "Nitro Boost", 3: "Nitro Basic"}
+        nitro_status = nitro_map.get(nitro_type, "ไม่ทราบสถานะ")
+
+        avatar_id = user_data.get("avatar")
+        avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{avatar_id}.png" if avatar_id else "https://cdn.discordapp.com/embed/avatars/0.png"
+
+        # สร้าง Embed ผลลัพธ์
+        result_embed = discord.Embed(
+            title="✨ TOKEN CHECKER RESULT ✨",
+            description=(
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "• **ข้อมูล Token จะไม่ถูกนำไปบันทึกในฐานข้อมูลใดๆ**\n"
+                "• ผลลัพธ์แสดงเฉพาะตัวคุณเท่านั้น (ส่งเข้า DM ส่วนตัว)\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            ),
+            color=0xe74c3c # สีแดง
+        )
+        result_embed.set_thumbnail(url=avatar_url)
+        result_embed.add_field(name="🏷️ ชื่อผู้ใช้", value=f"`{full_name}`", inline=True)
+        result_embed.add_field(name="🆔 บัญชี ID", value=`f"{user_id}"`, inline=True)
+        result_embed.add_field(name="📂 ประเภทบัญชี", value=acc_type, inline=True)
+        result_embed.add_field(name="📧 อีเมล", value=f"`{email}`", inline=True)
+        result_embed.add_field(name="📱 เบอร์โทรศัพท์", value=f"`{phone}`", inline=True)
+        result_embed.add_field(name="🔒 ระบบความปลอดภัย (2FA)", value=mfa_enabled, inline=True)
+        result_embed.add_field(name="✅ สถานะยืนยันอีเมล", value=verified, inline=True)
+        result_embed.add_field(name="💎 สถานะ Nitro ล่าสุด", value=nitro_status, inline=True)
+        result_embed.set_footer(text="ICEWEN_2 : TOKEN CHECKER SYSTEM", icon_url="https://i.pinimg.com/736x/5c/6f/47/5c6f4777c193e7fff8120e187ace58fd.jpg")
+
+        try:
+            # ส่งผลลัพธ์เข้า DM ของผู้ใช้
+            await interaction.user.send(embed=result_embed)
+            await interaction.followup.send(
+                "✅ ตรวจสอบ Token สำเร็จ! ระบบได้จัดส่งผลลัพธ์ไปที่ **ข้อความส่วนตัว (DM)** ของคุณแล้วครับ",
+                ephemeral=True
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ ไม่สามารถส่งข้อความหาคุณได้ กรุณาเปิดรับข้อความส่วนตัว (Direct Messages) จากสมาชิกในเซิร์ฟเวอร์ก่อนใช้งานครับ",
+                ephemeral=True
+            )
+
+
+class TokenCheckerView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="TOKEN CHECKER",
+        style=discord.ButtonStyle.danger, # ปุ่มสีแดง
+        emoji="🔍",
+        custom_id="icewen_token_checker:button"
+    )
+    async def open_checker(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(TokenModal())
+
+
+@bot.tree.command(name="checktoken", description="เปิดหน้าต่างตรวจสอบ Discord Token (ส่งผลลัพธ์เข้า DM)")
+async def checktoken_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="TOKEN CHECKER | ตรวจสอบ Discord Token",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━ .•° TOKEN CHECKER °•.\n"
+            "╭ · ระบบตรวจสอบความถูกต้องและดูสิทธิ์ของ Token\n"
+            "│ · แยกประเภทบัญชีอัตโนมัติ (User Account / Bot)\n"
+            "│ · ตรวจสอบอีเมล, เบอร์โทรศัพท์ และสถานะ 2FA\n"
+            "╰ · เช็คสถานะแพลทินัม Nitro ล่าสุด\n\n"
+            "**นโยบายความปลอดภัย:**\n"
+            "• ข้อมูล Token จะไม่ถูกนำไปบันทึกหรือบันทึกในฐานข้อมูลใดๆ\n"
+            "• ผลลัพธ์แสดงเฉพาะตัวคุณเท่านั้น (ส่งเข้า DM ส่วนตัว)"
+        ),
+        color=0xe74c3c # สีแดง
+    )
+    embed.set_image(url="https://i.pinimg.com/736x/5c/6f/47/5c6f4777c193e7fff8120e187ace58fd.jpg")
+    embed.set_footer(text="ICEWEN_2 : TOKEN CHECKER SYSTEM")
+
+    await interaction.channel.send(embed=embed, view=TokenCheckerView())
+    await interaction.response.send_message("✅ ส่งหน้าต่าง Token Checker เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
