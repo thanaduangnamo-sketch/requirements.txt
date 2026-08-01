@@ -5,12 +5,12 @@ import os
 from flask import Flask
 from threading import Thread
 
-# --- ระบบเปิดเว็บจำลองสำหรับ Render (แก้ปัญหา No open ports detected) ---
+# --- ระบบเปิดเว็บจำลองสำหรับ Render ---
 app = Flask('')
 
 @app.route('/')
 def home():
-    return "Verification Bot is running!"
+    return "Ticket Bot is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -18,7 +18,7 @@ def run():
 def keep_alive():
     t = Thread(target=run)
     t.start()
-# -----------------------------------------------------------------
+# ------------------------------------
 
 token = os.environ.get("DISCORD_TOKEN")
 
@@ -31,7 +31,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Web Port & Verify Mode)")
+    print(f"Logged in as {bot.user.name} (Ticket System Mode)")
     
     try:
         synced = await bot.tree.sync()
@@ -40,75 +40,108 @@ async def on_ready():
         print(f"Failed to sync commands: {e}")
 
     streaming_activity = discord.Streaming(
-        name="ระบบยืนยันตัวตนสไตล์เท่ๆ พร้อมใช้งานครับ",
+        name="ระบบติดต่อแอดมินพร้อมใช้งานครับ",
         url="https://www.twitch.tv/discord"
     )
     await bot.change_presence(status=discord.Status.online, activity=streaming_activity)
     print("✅ บอทออนไลน์ในสถานะสตรีมมิ่ง (เม็ดม่วง) เรียบร้อยแล้วครับ")
 
 
-class VerifyView(discord.ui.View):
-    def __init__(self, role_id: int):
+# --- View สำหรับปุ่มกดเปิด Ticket ---
+class TicketView(discord.ui.View):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.role_id = role_id
 
     @discord.ui.button(
-        label="ยืนยันตัวตน",
+        label="สอบถาม/แจ้งปัญหา",
         style=discord.ButtonStyle.success,
-        emoji="🍀"
+        emoji="📩"
     )
-    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        role = interaction.guild.get_role(self.role_id)
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        user = interaction.user
 
-        if not role:
+        # ป้องกันการสร้างห้องซ้ำสำหรับผู้ใช้คนเดิม (เช็คชื่อห้อง)
+        existing_channel = discord.utils.get(guild.text_channels, name=f"ticket-{user.name.lower()}")
+        if existing_channel:
             return await interaction.response.send_message(
-                "❌ ไม่พบยศนี้ในเซิร์ฟเวอร์",
+                f"❌ คุณมีห้องติดต่อแอดมินเปิดอยู่แล้วครับ: {existing_channel.mention}",
                 ephemeral=True
             )
 
-        if role in interaction.user.roles:
-            return await interaction.response.send_message(
-                "❌ คุณได้ทำการยืนยันตัวตนไปแล้ว",
-                ephemeral=True
-            )
+        # ตั้งค่าสิทธิ์การมองเห็นห้อง (ให้เฉพาะแอดมินกับคนที่กดเห็นห้องนี้)
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
+        }
 
-        await interaction.user.add_roles(role)
+        # สร้างห้องในหมวดหมู่ หรือสร้างปกติ
+        ticket_channel = await guild.create_text_channel(
+            name=f"ticket-{user.name}",
+            overwrites=overwrites,
+            topic=f"Ticket ของคุณ {user.name} (ID: {user.id})"
+        )
+
+        embed = discord.Embed(
+            title="📩 เปิด Ticket สำเร็จ",
+            description=f"สวัสดีครับคุณ {user.mention} แจ้งรายละเอียดปัญหาหรือเรื่องที่ต้องการติดต่อแอดมินไว้ได้เลยครับ ทีมงานจะรีบเข้ามาช่วยเหลือโดยเร็วที่สุด!",
+            color=0x2b2d31
+        )
+        
+        # ปุ่มสำหรับปิด Ticket
+        close_view = CloseTicketView()
+        await ticket_channel.send(content=f"{user.mention}", embed=embed, view=close_view)
+
         await interaction.response.send_message(
-            f"✅ รับยศ {role.mention} เรียบร้อยแล้ว",
+            f"✅ สร้างห้องติดต่อแอดมินให้แล้วครับ: {ticket_channel.mention}",
             ephemeral=True
         )
 
 
-@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนพร้อมปรับแต่งรูปภาพและข้อความได้")
+# --- View สำหรับปุ่มปิดห้อง Ticket ---
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="ปิด Ticket",
+        style=discord.ButtonStyle.danger,
+        emoji="🔒"
+    )
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("🔒 กำลังปิดห้องนี้ใน 3 วินาที...", ephemeral=True)
+        import asyncio
+        await asyncio.sleep(3)
+        await interaction.channel.delete()
+
+
+# --- คำสั่ง Slash Command สำหรับเรียกหน้าต่างแจ้งปัญหา ---
+@bot.tree.command(name="ติดต่อแอดมิน", description="สร้างระบบติดต่อแอดมิน / แจ้งปัญหา (Ticket)")
 @app_commands.describe(
-    role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับ",
-    image="อัปโหลดรูปภาพที่ต้องการใส่ใน Embed (ไม่บังคับ)",
+    image="อัปโหลดรูปภาพประกอบ Embed (ไม่บังคับ)",
     image_url="หรือใส่ลิงก์รูปภาพ (URL) แทนการอัปโหลด (ไม่บังคับ)"
 )
-async def verify_command(
-    interaction: discord.Interaction, 
-    role: discord.Role, 
+async def ticket_command(
+    interaction: discord.Interaction,
     image: discord.Attachment = None,
     image_url: str = None
 ):
     embed = discord.Embed(
-        title="🧸 ระบบยืนยันตัวตน",
+        title="ติดต่อแอดมิน/แจ้งปัญหาได้ที่นี่",
         description=(
+            "🎟️ **Support Ticket**\n"
+            "หากคุณมีเรื่องจะติดต่อ\n"
+            "กดปุ่มด้านล่างเพื่อเปิดตั๋วได้ทันที\n\n"
             "```ansi\n"
-            "\u001b[32m┌─────────────────────────────┐\n"
-            "  ✨ Welcome to our Server ✨\n"
-            "└─────────────────────────────┘\n"
-            "\u001b[0m```\n"
-            "☘️ เพื่อรับสิทธิ์ในการใช้งานและพูดคุย\n"
-            "🍀 กรุณากกดปุ่มด้านล่างเพื่อ **ยืนยันตัวตน**\n\n"
-            f"» ยศที่คุณจะได้รับคือ: {role.mention}\n\n"
-            "```ansi\n"
-            "\u001b[32m┌─────────── •°·.•°- ───────────┐\n"
-            "  🍀 กดเลย แล้วเจอกันข้างใน! 🦋\n"
-            "└─────────── •°·.•°- ───────────┘\n"
+            "\u001b[30;1m┌─────────────────────────────────────────┐\n"
+            "  🟩 โปรดอธิบายรายละเอียดให้ครบถ้วน\n"
+            "  ⏳ แอดมินจะรีบเข้ามาตอบโดยเร็วที่สุด\n"
+            "  ⚠️ การเปิดตั๋วเล่น ๆ หรือไม่เหมาะสม อาจส่งผลชาติต่อสิทธิ์การใช้งาน\n"
+            "└─────────────────────────────────────────┘\n"
             "\u001b[0m"
         ),
-        color=0x2b2d31
+        color=0xf1c40f  # แถบสีเหลืองด้านข้างแบบในรูปตัวอย่าง
     )
 
     target_image = None
@@ -120,13 +153,15 @@ async def verify_command(
     if target_image:
         embed.set_image(url=target_image)
 
+    embed.set_footer(text="Powered by Custom Bot")
+
     await interaction.channel.send(
         embed=embed,
-        view=VerifyView(role.id)
+        view=TicketView()
     )
 
     await interaction.response.send_message(
-        "✅ สร้างหน้าต่างยืนยันตัวตนเรียบร้อยครับ",
+        "✅ ส่งหน้าต่างติดต่อแอดมินเรียบร้อยครับ",
         ephemeral=True
     )
 
