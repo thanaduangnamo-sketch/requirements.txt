@@ -40,14 +40,15 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 # ==========================================
-# 🟩 ระบบรับยศทั่วไป (Role Select Menu)
+# 🟩 ระบบรับยศทั่วไป (Role Select Menu แบบในรูป)
 # ==========================================
 class GeneralRoleSelect(discord.ui.Select):
     def __init__(self, guild: discord.Guild):
+        # 💡 คำแนะนำ: เปลี่ยน label เป็นชื่อยศจริง และ value เป็น ID ของยศในเซิร์ฟเวอร์ของคุณ
         options = [
-            discord.SelectOption(label="ยศที่ 1 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="ROLE_ID_1"),
-            discord.SelectOption(label="ยศที่ 2 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="ROLE_ID_2"),
-            discord.SelectOption(label="ยศที่ 3 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="ROLE_ID_3"),
+            discord.SelectOption(label="ยศที่ 1 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345678"),
+            discord.SelectOption(label="ยศที่ 2 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345679"),
+            discord.SelectOption(label="ยศที่ 3 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345680"),
         ]
         super().__init__(
             placeholder="【 ☁️ เลือกรับยศที่ต้องการ 】", 
@@ -58,14 +59,19 @@ class GeneralRoleSelect(discord.ui.Select):
         )
 
     async def callback(self, interaction: discord.Interaction):
-        role_id = int(self.values[0])
+        try:
+            role_id = int(self.values[0])
+        except ValueError:
+            return await interaction.response.send_message("❌ ค่า ID ยศไม่ถูกต้อง กรุณาติดต่อแอดมินให้ตั้งค่า Role ID ใหม่", ephemeral=True)
+            
         role = interaction.guild.get_role(role_id)
 
         if not role:
-            return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบเซิร์ฟเวอร์ กรุณาติดต่อแอดมิน", ephemeral=True)
+            return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบเซิร์ฟเวอร์ กรุณาตรวจสอบ ID ยศอีกครั้ง", ephemeral=True)
 
         user = interaction.user
 
+        # กดซ้ำเพื่อคืนยศ / กดครั้งแรกเพื่อรับยศ (Toggle)
         if role in user.roles:
             await user.remove_roles(role)
             await interaction.response.send_message(f"🗑️ ทำการคืนยศ **{role.name}** เรียบร้อยแล้วครับ", ephemeral=True)
@@ -86,10 +92,10 @@ async def setup_roles_command(interaction: discord.Interaction, image_url: str =
     embed = discord.Embed(
         title="💬 ระบบรับยศทั่วไป",
         description=(
-            "`.•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•.`\n\n"
+            ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•.\n\n"
             "🟢 : เลือกรับยศที่ต้องการจากเมนูด้านล่าง\n"
             "🟢 : เลือกยศซ้ำ เพื่อคืนยศ\n\n"
-            "`.•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•.`"
+            ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•."
         ),
         color=0x2b2d31
     )
@@ -131,7 +137,7 @@ async def on_ready():
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
     bot.add_view(TokenCheckerView())
-    bot.add_view(GeneralRoleView()) # ลงทะเบียน View ระบบรับยศ
+    bot.add_view(GeneralRoleView()) # ลงทะเบียน View ระบบรับยศให้กดได้ตลอดเวลา
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -265,7 +271,7 @@ async def translate_command(interaction: discord.Interaction):
 
 
 # ==========================================
-# 🔍 ระบบ TOKEN CHECKER (ความลับสูงสุด ส่งตรง DM)
+# 🔍 ระบบ TOKEN CHECKER
 # ==========================================
 class TokenModal(discord.ui.Modal, title="ICEWEN_2 : TOKEN CHECKER"):
     token_input = discord.ui.TextInput(
