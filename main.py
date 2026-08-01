@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets + Auto-Kick + Clear + Log + Ready Announce) is running!"
+    return "Frost AI Bot (AI + Verification + Dropdown Roles + Tickets + Auto-Kick + Clear + Log + No-Timeout) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -41,7 +41,7 @@ COOLDOWN_TIME = 3.0
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Advanced Security & Management Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - No Timeout Mode)")
     
     if not check_unverified_users.is_running():
         check_unverified_users.start()
@@ -61,7 +61,6 @@ async def on_member_join(member):
         "join_time": datetime.now(timezone.utc)
     }
 
-    # ส่ง Log สมาชิกเข้าเซิร์ฟเวอร์
     guild_id = member.guild.id
     if guild_id in log_channels:
         log_channel = member.guild.get_channel(log_channels[guild_id])
@@ -77,7 +76,6 @@ async def on_member_join(member):
 
 @bot.event
 async def on_member_remove(member):
-    # ส่ง Log สมาชิกออกจากเซิร์ฟเวอร์
     guild_id = member.guild.id
     if guild_id in log_channels:
         log_channel = member.guild.get_channel(log_channels[guild_id])
@@ -188,7 +186,7 @@ async def set_log_channel(interaction: nextcord.Interaction, channel: nextcord.T
 
 
 # ==========================================
-# 3. คำสั่ง /clear (ลบข้อความที่ไม่เหมาะสม)
+# 3. คำสั่ง /clear (ลบข้อความ)
 # ==========================================
 @bot.slash_command(name="clear", description="🧹 ลบข้อความที่ไม่เหมาะสมหรือไม่จำเป็นในห้องแชท")
 async def clear(interaction: nextcord.Interaction, amount: int = 10):
@@ -204,7 +202,7 @@ async def clear(interaction: nextcord.Interaction, amount: int = 10):
 
 
 # ==========================================
-# 4. ระบบปุ่มยืนยันตัวตน (Verification)
+# 4. ระบบปุ่มยืนยันตัวตน (Verification - ป้องกัน Timeout)
 # ==========================================
 class VerificationView(nextcord.ui.View):
     def __init__(self):
@@ -212,17 +210,18 @@ class VerificationView(nextcord.ui.View):
 
     @nextcord.ui.button(label="✅ ยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button")
     async def verify(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.defer(ephemeral=True) # ป้องกันแอปพลิเคชันไม่ตอบสนอง
         role = nextcord.utils.get(interaction.guild.roles, name="Verified")
         
         if not role:
-            return await interaction.response.send_message("❌ ยังไม่ได้สร้างยศชื่อ `Verified` ในเซิร์ฟเวอร์นี้ค่ะ รบกวนให้แอดมินสร้างยศก่อนน้า!", ephemeral=True)
+            return await interaction.followup.send("❌ ยังไม่ได้สร้างยศชื่อ `Verified` ในเซิร์ฟเวอร์นี้ค่ะ รบกวนให้แอดมินสร้างยศก่อนน้า!", ephemeral=True)
 
         if role in interaction.user.roles:
-            await interaction.response.send_message("✨ คุณได้ทำการยืนยันตัวตนไปเรียบร้อยแล้วนะคะ!", ephemeral=True)
+            await interaction.followup.send("✨ คุณได้ทำการยืนยันตัวตนไปเรียบร้อยแล้วนะคะ!", ephemeral=True)
         else:
             await interaction.user.add_roles(role)
             pending_verifications.pop(interaction.user.id, None)
-            await interaction.response.send_message("🎉 ยืนยันตัวตนสำเร็จแล้วค่ะ! ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์นะคะ 💖", ephemeral=True)
+            await interaction.followup.send("🎉 ยืนยันตัวตนสำเร็จแล้วค่ะ! ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์นะคะ 💖", ephemeral=True)
 
 
 @bot.slash_command(name="setup-verification", description="🛡️ ส่งข้อความ, รูปภาพยืนยันตัวตน และปุ่มสำหรับสมาชิกใหม่")
@@ -244,7 +243,7 @@ async def setup_verification(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 5. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown)
+# 5. ระบบเลือกยศแบบดรอปดาวน์ (Role Dropdown - ป้องกัน Timeout)
 # ==========================================
 class RoleSelect(nextcord.ui.Select):
     def __init__(self):
@@ -256,18 +255,19 @@ class RoleSelect(nextcord.ui.Select):
         super().__init__(placeholder="📌 เลือกยศที่คุณต้องการที่นี่...", min_values=1, max_values=1, options=options, custom_id="role_select_menu")
 
     async def callback(self, interaction: nextcord.Interaction):
+        await interaction.response.defer(ephemeral=True) # ป้องกันแอปพลิเคชันไม่ตอบสนอง
         selected_role_name = self.values[0]
         role = nextcord.utils.get(interaction.guild.roles, name=selected_role_name)
 
         if not role:
-            return await interaction.response.send_message(f"❌ ไม่พบยศชื่อ `{selected_role_name}` ในเซิร์ฟเวอร์นี้ รบกวนให้แอดมินสร้างยศนี้ก่อนนะคะ!", ephemeral=True)
+            return await interaction.followup.send(f"❌ ไม่พบยศชื่อ `{selected_role_name}` ในเซิร์ฟเวอร์นี้ รบกวนให้แอดมินสร้างยศนี้ก่อนนะคะ!", ephemeral=True)
 
         if role in interaction.user.roles:
             await interaction.user.remove_roles(role)
-            await interaction.response.send_message(f"📤 ระบบได้ทำการถอดออกยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ", ephemeral=True)
+            await interaction.followup.send(f"📤 ระบบได้ทำการถอดออกยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ", ephemeral=True)
         else:
             await interaction.user.add_roles(role)
-            await interaction.response.send_message(f"📥 ระบบได้มอบยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ!", ephemeral=True)
+            await interaction.followup.send(f"📥 ระบบได้มอบยศ **{selected_role_name}** ให้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 class RoleSelectView(nextcord.ui.View):
@@ -298,7 +298,7 @@ async def setup_selfroles(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 6. ระบบ Tickets (สร้างห้องคุยส่วนตัว)
+# 6. ระบบ Tickets (สร้างห้องคุยส่วนตัว - ป้องกัน Timeout)
 # ==========================================
 class CloseTicketView(nextcord.ui.View):
     def __init__(self):
@@ -317,12 +317,13 @@ class TicketView(nextcord.ui.View):
 
     @nextcord.ui.button(label="🎫 เปิด Ticket (ติดต่อแอดมิน)", style=nextcord.ButtonStyle.primary, custom_id="create_ticket_btn")
     async def create_ticket(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        await interaction.response.defer(ephemeral=True) # ป้องกันแอปพลิเคชันไม่ตอบสนอง
         guild = interaction.guild
         member = interaction.user
 
         existing_channel = nextcord.utils.get(guild.text_channels, name=f"ticket-{member.name.lower()}")
         if existing_channel:
-            return await interaction.response.send_message(f"❌ คุณมีห้อง Ticket เปิดไว้อยู่แล้วค่ะ: {existing_channel.mention}", ephemeral=True)
+            return await interaction.followup.send(f"❌ คุณมีห้อง Ticket เปิดไว้อยู่แล้วค่ะ: {existing_channel.mention}", ephemeral=True)
 
         overwrites = {
             guild.default_role: nextcord.PermissionOverwrite(view_channel=False),
@@ -345,7 +346,7 @@ class TicketView(nextcord.ui.View):
 
         view = CloseTicketView()
         await ticket_channel.send(content=f"{member.mention} ยินดีต้อนรับสู่ Ticket ค่ะ!", embed=embed, view=view)
-        await interaction.response.send_message(f"✨ สร้างห้อง Ticket ส่วนตัวให้คุณแล้วค่ะ: {ticket_channel.mention}", ephemeral=True)
+        await interaction.followup.send(f"✨ สร้างห้อง Ticket ส่วนตัวให้คุณแล้วค่ะ: {ticket_channel.mention}", ephemeral=True)
 
 
 @bot.slash_command(name="setup-ticket", description="🎫 ส่งข้อความ, รูปภาพ Tickets และปุ่มเปิดห้องส่วนตัว")
@@ -367,7 +368,7 @@ async def setup_ticket(interaction: nextcord.Interaction):
 
 
 # ==========================================
-# 7. ระบบตั้งค่าช่องคุยกับ Frost AI และ ประกาศว่าพร้อมทำงาน
+# 7. ระบบตั้งค่าช่องคุยกับ AI และคำสั่ง AI Ready
 # ==========================================
 @bot.slash_command(name="set-ai-channel", description="🌸 กำหนดช่องให้ Frost AI พูดคุยด้วย")
 async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.TextChannel):
@@ -383,7 +384,7 @@ async def set_ai_channel(interaction: nextcord.Interaction, channel: nextcord.Te
     )
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# ---> เพิ่มคำสั่ง /ai-ready ตามที่คุณขอ <---
+
 @bot.slash_command(name="ai-ready", description="🌸 ประกาศว่า Frost AI พร้อมใช้งานแล้วในช่องแชท")
 async def ai_ready(interaction: nextcord.Interaction, channel: nextcord.TextChannel = None):
     if not interaction.user.guild_permissions.administrator:
