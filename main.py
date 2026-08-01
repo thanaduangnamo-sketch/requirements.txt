@@ -51,7 +51,7 @@ class DdosModal(discord.ui.Modal, title="⚡ DDOS SAIKUTO — กรอกเป
 
         # ส่งผลลัพธ์จำลองความสำเร็จ
         success_embed = discord.Embed(
-            title="✅ DDOS SAIKUTO — สำเร็จ!",
+            title="✅ Aegis Bot / shop — สำเร็จ!",
             description=(
                 f"🎉 การทดสอบจำลองเสร็จสิ้นเรียบร้อย!\n\n"
                 f"🎯 **เป้าหมาย:** `{target_url}`\n"
