@@ -2,6 +2,23 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import os
+from flask import Flask
+from threading import Thread
+
+# --- ระบบเปิดเว็บจำลองสำหรับ Render (แก้ปัญหา No open ports detected) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Verification Bot is running!"
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+# -----------------------------------------------------------------
 
 token = os.environ.get("DISCORD_TOKEN")
 
@@ -14,7 +31,7 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Custom Image Verify Mode)")
+    print(f"Logged in as {bot.user.name} (Web Port & Verify Mode)")
     
     try:
         synced = await bot.tree.sync()
@@ -94,7 +111,6 @@ async def verify_command(
         color=0x2b2d31
     )
 
-    # จัดการเรื่องรูปภาพ (เลือกจากไฟล์ที่อัปโหลด หรือลิงก์ที่พิมพ์มา)
     target_image = None
     if image:
         target_image = image.url
@@ -114,4 +130,5 @@ async def verify_command(
         ephemeral=True
     )
 
+keep_alive()
 bot.run(token)
