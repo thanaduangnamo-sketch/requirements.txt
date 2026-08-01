@@ -3,7 +3,6 @@ from nextcord.ext import commands
 import os
 from flask import Flask
 from threading import Thread
-import wavelink
 from groq import Groq
 import time
 
@@ -12,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Frost AI Bot (Music + Groq AI + Cooldown) is running!"
+    return "Frost AI Bot (AI + Button Verification + Cooldown) is running!"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
@@ -39,56 +38,52 @@ COOLDOWN_TIME = 3.0  # กำหนดให้รอ 3 วินาทีก่
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user.name} (Frost AI - Secure Mode)")
+    print(f"Logged in as {bot.user.name} (Frost AI - Verification Mode)")
 
-    # 1. เชื่อมต่อ Wavelink ผ่านโหนดสาธารณะสำรองตัวใหม่
-    try:
-        node = wavelink.Node(uri='https://lavalink.jirayu.net', password='youshallnotpass')
-        await wavelink.Pool.connect(nodes=[node], client=bot)
-        print("✅ เชื่อมต่อ Lavalink สำเร็จแล้วค่ะ!")
-    except Exception as e:
-        print(f"⚠️ เชื่อมต่อ Lavalink ไม่สำเร็จ: {e}")
-
-    # 2. ตั้งค่าสถานะเม็ดม่วง (Streaming)
-    streaming_message = "กำลังเปิดเพลงและคุยกับทุกคนนะค้า 🎶🌸"
-    twitch_url = "https://www.twitch.tv/monstercat"
-    activity = nextcord.Streaming(name=streaming_message, url=twitch_url)
+    # ตั้งค่าสถานะบอท
+    activity = nextcord.Activity(type=nextcord.ActivityType.watching, name="ดูแลความเรียบร้อยและคุยกับทุกคน 🌸")
     await bot.change_presence(status=nextcord.Status.online, activity=activity)
-    print("✅ ตั้งค่าสถานะสีม่วงสำเร็จแล้วค่ะ!")
+    print("✅ ตั้งค่าสถานะบอทสำเร็จแล้วค่ะ!")
 
 
 # ==========================================
-# ระบบเพลง (Wavelink)
+# ระบบปุ่มยืนยันตัวตน (Button Verification View)
 # ==========================================
-@bot.slash_command(name="play", description="🎶 สั่งให้บอทเข้าห้องเสียงและเปิดเพลงที่คุณต้องการ")
-async def play(interaction: nextcord.Interaction, search: str):
-    if not interaction.user.voice or not interaction.user.voice.channel:
-        return await interaction.send("❌ คุณต้องเข้าห้องเสียงก่อนถึงจะใช้คำสั่งนี้ได้นะคะ!", ephemeral=True)
+class VerificationView(nextcord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None) # ให้ปุ่มกดได้ตลอดเวลาไม่หมดอายุ
 
-    player = interaction.guild.voice_client
-    if not player:
-        try:
-            player = await interaction.user.voice.channel.connect(cls=wavelink.Player)
-        except Exception as e:
-            return await interaction.send(f"❌ ไม่สามารถเชื่อมต่อห้องเสียงได้: {e}", ephemeral=True)
+    @nextcord.ui.button(label="✅ ยืนยันตัวตน", style=nextcord.ButtonStyle.green, custom_id="verify_button")
+    async def verify(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
+        # ค้นหายศ "Verified" หรือยศสมาชิกในเซิร์ฟเวอร์ (สามารถเปลี่ยนชื่อยศได้ตามต้องการ)
+        role = nextcord.utils.get(interaction.guild.roles, name="Verified")
+        
+        if not role:
+            return await interaction.response.send_message("❌ ยังไม่ได้สร้างยศชื่อ `Verified` ในเซิร์ฟเวอร์นี้ค่ะ รบกวนให้แอดมินสร้างยศก่อนน้า!", ephemeral=True)
 
-    tracks = await wavelink.Playable.search(search)
-    if not tracks:
-        return await interaction.send("❌ หาเพลงที่ไม่เจอนะคะ ลองพิมพ์ชื่ออื่นดูน้า 🥺", ephemeral=True)
-
-    track = tracks[0]
-    await player.play(track)
-    await interaction.send(f"🎶 กำลังเปิดเพลง: **{track.title}** ให้ฟังแล้วค่ะแม่จ๋า 💖")
+        if role in interaction.user.roles:
+            await interaction.response.send_message("✨ คุณได้ทำการยืนยันตัวตนไปเรียบร้อยแล้วนะคะ!", ephemeral=True)
+        else:
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message("🎉 ยืนยันตัวตนสำเร็จแล้วค่ะ! ยินดีต้อนรับเข้าสู่เซิร์ฟเวอร์นะคะ 💖", ephemeral=True)
 
 
-@bot.slash_command(name="stop", description="⏹️ หยุดเพลงและให้บอทออกจากห้องเสียง")
-async def stop(interaction: nextcord.Interaction):
-    player = interaction.guild.voice_client
-    if player:
-        await player.disconnect()
-        await interaction.send("⏹️ หยุดเพลงและออกจากห้องเสียงให้เรียบร้อยแล้วค่ะ บายๆ น้า 👋")
-    else:
-        await interaction.send("❌ ตอนนี้บอทไม่ได้อยู่ในห้องเสียงเลยนะคะ", ephemeral=True)
+# คำสั่งสำหรับแอดมินเพื่อส่ง Embed และปุ่มยืนยันตัวตน
+@bot.slash_command(name="setup-verification", description="🛡️ ส่งข้อความและปุ่มยืนยันตัวตนสำหรับสมาชิกใหม่")
+async def setup_verification(interaction: nextcord.Interaction):
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ เฉพาะแอดมินเซิร์ฟเวอร์เท่านั้นถึงจะใช้คำสั่งนี้ได้ค่ะ", ephemeral=True)
+
+    embed = nextcord.Embed(
+        title="🛡️ ยืนยันตัวตนเพื่อเข้าสู่เซิร์ฟเวอร์",
+        description="กรุณากดปุ่ม **'✅ ยืนยันตัวตน'** ด้านล่างนี้ เพื่อรับยศและปลดล็อกห้องพูดคุยทั้งหมดภายในเซิร์ฟเวอร์ของเราค่ะ!",
+        color=nextcord.Color.blurple()
+    )
+    embed.set_footer(text="ระบบยืนยันตัวตนแบบรวดเร็วและปลอดภัย 🌸")
+
+    view = VerificationView()
+    await interaction.channel.send(embed=embed, view=view)
+    await interaction.response.send_message("✅ สร้างระบบปุ่มยืนยันตัวตนในห้องนี้เรียบร้อยแล้วค่ะ!", ephemeral=True)
 
 
 # ==========================================
@@ -130,11 +125,9 @@ async def on_message(message):
             if elapsed_time < COOLDOWN_TIME:
                 remaining = round(COOLDOWN_TIME - elapsed_time, 1)
                 warning_msg = await message.channel.send(f"⏳ ใจเย็นๆ ก่อนนะคะคุณ {message.author.name} รออีก **{remaining} วินาที** ค่อยพิมพ์คุยกับฟรอยด์ใหม่น้า 🥺")
-                # ลบข้อความแจ้งเตือนหลังผ่านไป 3 วินาที เพื่อไม่ให้แชทรก
                 await warning_msg.delete(delay=3)
                 return
 
-        # บันทึกเวลาล่าสุดที่ผู้ใช้พิมพ์
         user_cooldowns[user_id] = current_time
         user_message = message.content
 
@@ -160,7 +153,6 @@ async def on_message(message):
             except Exception as e:
                 ai_reply = f"อุ๊ย... ขอโทษด้วยนะคะคุณ {message.author.name} ตอนนี้สมองกล Groq ของฟรอยด์เชื่อมต่อไม่สำเร็จค่ะ 🥺 (Error: {e})"
 
-        # แบ่งส่งข้อความหากยาวเกินขีดจำกัดของ Discord (2000 ตัวอักษร)
         if len(ai_reply) > 2000:
             for i in range(0, len(ai_reply), 2000):
                 await message.channel.send(ai_reply[i:i+2000])
