@@ -40,33 +40,19 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 
 # ==========================================
-# 🟩 ระบบรับยศทั่วไป (Role Select Menu)
+# 🟩 ระบบรับยศทั่วไป (เลือกยศผ่านคำสั่ง /setup_roles)
 # ==========================================
-class GeneralRoleSelect(discord.ui.Select):
-    def __init__(self, guild: discord.Guild):
-        options = [
-            discord.SelectOption(label="ยศที่ 1 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345678"),
-            discord.SelectOption(label="ยศที่ 2 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345679"),
-            discord.SelectOption(label="ยศที่ 3 (ตัวอย่าง)", description="กดเพื่อรับหรือคืนยศนี้", emoji="🟢", value="123456789012345680"),
-        ]
-        super().__init__(
-            placeholder="【 ☁️ เลือกรับยศที่ต้องการ 】", 
-            min_values=1, 
-            max_values=1, 
-            options=options, 
-            custom_id="general_role_select:dropdown"
-        )
+class GeneralRoleView(discord.ui.View):
+    def __init__(self, role_id: int):
+        super().__init__(timeout=None)
+        self.role_id = role_id
 
-    async def callback(self, interaction: discord.Interaction):
-        try:
-            role_id = int(self.values[0])
-        except ValueError:
-            return await interaction.response.send_message("❌ ค่า ID ยศไม่ถูกต้อง กรุณาติดต่อแอดมิน", ephemeral=True)
-            
-        role = interaction.guild.get_role(role_id)
-
+    @discord.ui.button(label="【 ☁️ กดเพื่อรับ/คืนยศ 】", style=discord.ButtonStyle.success, emoji="🟢", custom_id="general_role_button:dynamic")
+    async def toggle_role(self, interaction: discord.Interaction, button: discord.ui.Button):
+        role = interaction.guild.get_role(self.role_id)
+        
         if not role:
-            return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบเซิร์ฟเวอร์", ephemeral=True)
+            return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบเซิร์ฟเวอร์ กรุณาติดต่อแอดมิน", ephemeral=True)
 
         user = interaction.user
 
@@ -78,21 +64,18 @@ class GeneralRoleSelect(discord.ui.Select):
             await interaction.response.send_message(f"✅ คุณได้รับยศ **{role.name}** เรียบร้อยแล้วครับ!", ephemeral=True)
 
 
-class GeneralRoleView(discord.ui.View):
-    def __init__(self, guild: discord.Guild = None):
-        super().__init__(timeout=None)
-        self.add_item(GeneralRoleSelect(guild))
-
-
-@bot.tree.command(name="setup_roles", description="สร้างระบบรับยศทั่วไปดีไซน์สวยงามเหมือนในภาพตัวอย่าง")
-@app_commands.describe(image_url="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)")
-async def setup_roles_command(interaction: discord.Interaction, image_url: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
+@bot.tree.command(name="setup_roles", description="สร้างระบบรับยศปุ่มกด โดยเลือกยศที่ต้องการได้ทันที")
+@app_commands.describe(
+    role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับเมื่อกดปุ่ม",
+    image_url="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)"
+)
+async def setup_roles_command(interaction: discord.Interaction, role: discord.Role, image_url: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
     embed = discord.Embed(
         title="💬 ระบบรับยศทั่วไป",
         description=(
             ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•.\n\n"
-            "🟢 : เลือกรับยศที่ต้องการจากเมนูด้านล่าง\n"
-            "🟢 : เลือกยศซ้ำ เพื่อคืนยศ\n\n"
+            f"🟢 : กดปุ่มด้านล่างเพื่อรับยศ **{role.name}**\n"
+            "🟢 : กดปุ่มซ้ำ เพื่อคืนยศ\n\n"
             ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•."
         ),
         color=0x2b2d31
@@ -103,10 +86,10 @@ async def setup_roles_command(interaction: discord.Interaction, image_url: str =
         
     embed.set_footer(text="© GET ROLES BOT")
 
-    view = GeneralRoleView(interaction.guild)
+    view = GeneralRoleView(role.id)
     
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างหน้าต่างระบบรับยศเรียบร้อยแล้วครับ", ephemeral=True)
+    await interaction.response.send_message(f"✅ สร้างหน้าต่างระบบรับยศ (**{role.name}**) เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # --- ระบบลูปเปลี่ยนสถานะทุกๆ 1 นาที ---
@@ -116,8 +99,8 @@ async def change_status():
     
     statuses = [
         discord.Game(name=f"ให้บริการอยู่ {server_count} เซิร์ฟเวอร์"),
-        discord.Game(name="ระบบยืนยันตัวตนพร้อมใช้งาน"),
-        discord.Game(name="ระบบแปลภาษา & Ticket พร้อมใช้งาน")
+        discord.Game(name="ระบบรับยศ & Ticket พร้อมใช้งาน"),
+        discord.Game(name="ระบบแปลภาษา & Token Checker พร้อมใช้งาน")
     ]
     
     if not hasattr(change_status, "index"):
@@ -131,11 +114,9 @@ async def change_status():
 
 @bot.event
 async def on_ready():
-    bot.add_view(PersistentVerifyView(None)) # ลงทะเบียนรองรับ Dynamic Role
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
     bot.add_view(TokenCheckerView())
-    bot.add_view(GeneralRoleView())
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Auto Status Mode)")
@@ -386,63 +367,6 @@ async def checktoken_command(interaction: discord.Interaction):
 
     await interaction.channel.send(embed=embed, view=TokenCheckerView())
     await interaction.response.send_message("✅ ส่งหน้าต่าง Token Checker เรียบร้อยแล้วครับ", ephemeral=True)
-
-
-# ==========================================
-# 1. ระบบยืนยันตัวตน (เลือกยศผ่านคำสั่ง / ได้ทันที)
-# ==========================================
-class PersistentVerifyView(discord.ui.View):
-    def __init__(self, role_id: int = None):
-        super().__init__(timeout=None)
-        self.role_id = role_id
-
-    @discord.ui.button(label="【 ☁️ กดเพื่อยืนยันตัวตน 】", style=discord.ButtonStyle.success, emoji="🟢", custom_id="persistent_verify:button")
-    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
-        # ดึงยศจาก ID ที่ตั้งค่าไว้ตอนใช้คำสั่ง (ถ้าไม่มีสำรองหาจากชื่อ 'Verified' หรือ 'Member')
-        role = None
-        if self.role_id:
-            role = interaction.guild.get_role(self.role_id)
-        
-        if not role:
-            role = discord.utils.get(interaction.guild.roles, name="Verified") or discord.utils.get(interaction.guild.roles, name="Member")
-        
-        if not role:
-            return await interaction.response.send_message("❌ ไม่พบยศสำหรับยืนยันตัวตนในระบบ กรุณาติดต่อแอดมิน", ephemeral=True)
-
-        if role in interaction.user.roles:
-            await interaction.user.remove_roles(role)
-            return await interaction.response.send_message(f"🗑️ ทำการคืนยศ **{role.name}** เรียบร้อยแล้วครับ", ephemeral=True)
-
-        await interaction.user.add_roles(role)
-        await interaction.response.send_message(f"✅ คุณได้รับยศ **{role.name}** เรียบร้อยแล้วครับ!", ephemeral=True)
-
-
-@bot.tree.command(name="ยืนยันตัวตน", description="สร้างระบบยืนยันตัวตนเลือกยศได้ทันทีผ่านคำสั่ง")
-@app_commands.describe(
-    role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับเมื่อกดปุ่ม", 
-    image_url="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)"
-)
-async def verify_command(interaction: discord.Interaction, role: discord.Role, image_url: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
-    embed = discord.Embed(
-        title="💬 ระบบยืนยันตัวตน",
-        description=(
-            ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•.\n\n"
-            f"🟢 : กดปุ่มด้านล่างเพื่อยืนยันตัวตนรับยศ **{role.name}**\n"
-            "🟢 : กดปุ่มซ้ำ เพื่อคืนยศ\n\n"
-            ".•° 💧 𝓡𝓪𝓲𝓷 𝓓𝓻𝓸𝓹𝓼 💧 °•."
-        ),
-        color=0x2b2d31
-    )
-    
-    if image_url:
-        embed.set_image(url=image_url)
-        
-    embed.set_footer(text="© VERIFY BOT")
-
-    view = PersistentVerifyView(role.id)
-
-    await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message(f"✅ สร้างหน้าต่างระบบยืนยันตัวตน (ยศ: {role.name}) เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # ==========================================
