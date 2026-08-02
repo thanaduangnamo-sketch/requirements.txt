@@ -6,7 +6,6 @@ import aiohttp
 from flask import Flask
 from threading import Thread
 import asyncio
-import time
 
 # --- ระบบเปิดเว็บจำลองสำหรับ Render (ดึง Port อัตโนมัติ) ---
 app = Flask('')
@@ -39,179 +38,118 @@ intents.moderation = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ฐานข้อมูลจำลองสำหรับเก็บยศของผู้ใช้ (User ID -> List of Role IDs)
+user_saved_roles = {}
+
 
 # ==========================================
-# ⚡ AEGIS — CONTROL PANEL (สำหรับเล่นขำๆ)
+# 🛡️ ระบบเซฟและคืนยศ (Save & Restore Roles)
 # ==========================================
-ddos_cooldowns = {}
-ddos_current_user = None
+class SaveRestoreRoleView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
-class DdosModal(discord.ui.Modal, title="⚡ AEGIS — กรอกเป้าหมาย"):
-    def __init__(self, duration: int, mode: str):
-        super().__init__()
-        self.duration = duration
-        self.mode = mode
-
-        self.url_input = discord.ui.TextInput(
-            label="กรอก URL เป้าหมายที่ต้องการทดสอบ",
-            style=discord.TextStyle.short,
-            placeholder="https://example.com",
-            required=True,
-            max_length=200
-        )
-        self.add_item(self.url_input)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        global ddos_current_user
-        target_url = self.url_input.value.strip()
-
+    @discord.ui.button(label="เซฟยศของฉัน", style=discord.ButtonStyle.primary, emoji="🛡️", custom_id="aegis_save_role:button")
+    async def save_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user = interaction.user
+        guild = interaction.guild
+        
+        # กรองเอาเฉพาะยศที่บอทสามารถจัดการได้ และไม่ใช่ @everyone
+        roles_to_save = [role.id for role in user.roles if role != guild.default_role and guild.me.top_role > role]
+        
+        user_saved_roles[user.id] = roles_to_save
+        
         embed = discord.Embed(
-            title="⚡ กำลังเริ่มกระบวนการ Aegis...",
-            description=(
-                f"🎯 **เป้าหมาย:** `{target_url}`\n"
-                f"⏱️ **ระยะเวลา:** `{self.duration} วินาที`\n"
-                f"⚙️ **โหมด:** `{self.mode}`\n"
-                f"🔄 **สถานะ:** กำลังส่งคำขอ (Requests)..."
-            ),
+            title="🛡️ สำเร็จ — บันทึกยศเรียบร้อย",
+            description=f"✅ ทำการเซฟยศทั้งหมดของคุณจำนวน **{len(roles_to_save)} ยศ** เรียบร้อยแล้วครับ!",
             color=0xf1c40f
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        for remaining in range(self.duration, 0, -5 if self.duration >= 10 else -1):
-            await asyncio.sleep(min(5, remaining))
-
-        ddos_current_user = None
-
-        success_embed = discord.Embed(
-            title="✅ AEGIS — สำเร็จ!",
-            description=(
-                f"🎉 การทดสอบจำลองเสร็จสิ้นเรียบร้อย!\n\n"
-                f"🎯 **เป้าหมาย:** `{target_url}`\n"
-                f"⏱️ **เวลาที่ใช้:** `{self.duration} วินาที`\n"
-                f"⚙️ **โหมด:** `{self.mode}` (ผ่านพร็อกซี่ 2,841 ตัว)\n"
-                f"📊 **สถานะผลลัพธ์:** จำลองการส่งข้อมูลสำเร็จ (Aegis Shop)"
-            ),
-            color=0x2ecc71
-        )
-        await interaction.followup.send(embed=success_embed, ephemeral=True)
-
-
-class DdosSelect(discord.ui.Select):
-    def __init__(self, is_vip: bool):
-        self.is_vip = is_vip
-        max_time = 500 if is_vip else 50
-        
-        options = [
-            discord.SelectOption(label="⏱️ 10 วินาที (ทดสอบสั้นๆ)", value="10", description="โหมดรวดเร็ว เหมาะสำหรับการเทสระบบ"),
-            discord.SelectOption(label="⏱️ 30 วินาที (มาตรฐาน)", value="30", description="ความเร็วกำลังดี"),
-            discord.SelectOption(label=f"⏱️ {max_time} วินาที (สูงสุดของระดับคุณ)", value=str(max_time), description=f"จัดเต็มเวลาสูงสุดสำหรับ {'VIP' if is_vip else 'Member ปกติ'}"),
-        ]
-        super().__init__(placeholder="👉 เลือกระยะเวลา (Duration) ที่นี่...", min_values=1, max_values=1, options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        global ddos_current_user
+    @discord.ui.button(label="คืนยศของฉัน", style=discord.ButtonStyle.danger, emoji="🛠️", custom_id="aegis_restore_role:button")
+    async def restore_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = interaction.user
-        current_time = time.time()
+        guild = interaction.guild
 
-        if ddos_current_user and ddos_current_user != user.id:
-            return await interaction.response.send_message("❌ ระบบกำลังใช้งานโดยผู้อื่นอยู่ กรุณารอสักครู่ (ใช้ได้ 1 คนต่อครั้ง)", ephemeral=True)
+        if user.id not in user_saved_roles or not user_saved_roles[user.id]:
+            return await interaction.response.send_message("❌ ไม่พบข้อมูลการเซฟยศของคุณในระบบ กรุณากด 'เซฟยศของฉัน' ก่อนครับ", ephemeral=True)
 
-        cooldown_time = 900 if self.is_vip else 3600
-        if user.id in ddos_cooldowns:
-            remaining_cd = ddos_cooldowns[user.id] - current_time
-            if remaining_cd > 0:
-                mins = int(remaining_cd // 60)
-                secs = int(remaining_cd % 60)
-                return await interaction.response.send_message(f"⏳ คุณติดคูลดาวน์อยู่! กรุณารออีก `{mins} นาที {secs} วินาที` ก่อนใช้งานอีกครั้ง", ephemeral=True)
+        saved_role_ids = user_saved_roles[user.id]
+        roles_to_add = []
+        failed_count = 0
 
-        ddos_current_user = user.id
-        ddos_cooldowns[user.id] = current_time + cooldown_time
+        for r_id in saved_role_ids:
+            role = guild.get_role(r_id)
+            if role and guild.me.top_role > role:
+                roles_to_add.append(role)
+            else:
+                failed_count += 1
 
-        selected_duration = int(self.values[0])
+        try:
+            await user.add_roles(*roles_to_add)
+            embed = discord.Embed(
+                title="🛠️ สำเร็จ — คืนยศเรียบร้อย",
+                description=f"✅ ทำการคืนยศให้คุณสำเร็จจำนวน **{len(roles_to_add)} ยศ** เรียบร้อยแล้วครับ!",
+                color=0xf1c40f
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการคืนยศ: {e}", ephemeral=True)
 
-        view = DdosModeView(selected_duration)
-        await interaction.response.send_message(
-            f"⏱️ คุณเลือกเวลา **{selected_duration} วินาที** เรียบร้อย!\n👉 ขั้นตอนถัดไป: เลือกโหมดการโจมตีด้านล่างครับ",
-            view=view,
-            ephemeral=True
+    @discord.ui.button(label="โปรไฟล์ของฉัน", style=discord.ButtonStyle.secondary, emoji="👤", custom_id="aegis_profile_role:button")
+    async def profile_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
+        user = interaction.user
+        guild = interaction.guild
+        
+        saved_ids = user_saved_roles.get(user.id, [])
+        saved_role_names = [guild.get_role(r_id).name for r_id in saved_ids if guild.get_role(r_id)]
+        current_roles = [r.name for r in user.roles if r != guild.default_role]
+
+        embed = discord.Embed(
+            title=f"👤 โปรไฟล์ข้อมูลยศของ: {user.name}",
+            description=(
+                f"🛡️ **ยศที่เซฟไว้ในระบบ:** `{len(saved_ids)} ยศ`\n"
+                f"📋 รายชื่อยศที่เซฟ: {', '.join(saved_role_names) if saved_role_names else 'ยังไม่มีการเซฟ'}\n\n"
+                f"🏷️ **ยศปัจจุบันที่มี:** `{len(current_roles)} ยศ`\n"
+                f"📋 รายชื่อยศปัจจุบัน: {', '.join(current_roles) if current_roles else 'ไม่มี'}"
+            ),
+            color=0xf1c40f
         )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-class DdosModeView(discord.ui.View):
-    def __init__(self, duration: int):
-        super().__init__(timeout=60)
-        self.duration = duration
-
-    @discord.ui.button(label="🚀 โหมด Direct (เร็ว)", style=discord.ButtonStyle.danger, emoji="⚡")
-    async def direct_mode(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(DdosModal(self.duration, "Direct (รวดเร็ว)"))
-
-    @discord.ui.button(label="🛡️ โหมด Proxy (ซ่อนตัว)", style=discord.ButtonStyle.primary, emoji="🌐")
-    async def proxy_mode(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(DdosModal(self.duration, "Proxy (2,841 ตัว)"))
-
-
-class DdosControlPanelView(discord.ui.View):
-    def __init__(self, is_vip: bool):
-        super().__init__(timeout=None)
-        self.add_item(DdosSelect(is_vip))
-
-
-@bot.tree.command(name="aegis_panel", description="เปิดแผงควบคุมระบบ Aegis Bot / Shop")
-async def aegis_panel_command(interaction: discord.Interaction):
-    is_vip = any("vip" in role.name.lower() for role in interaction.user.roles)
-    
-    role_name = "⭐ VIP" if is_vip else "● MEMBER ปกติ"
-    max_sec = "500 วิ" if is_vip else "50 วิ"
-    cd_time = "15 นาที" if is_vip else "1 ชม."
-    time_options = "10 ~ 500 วิ" if is_vip else "10 ~ 50 วิ"
-
+@bot.tree.command(name="setup_saveroles", description="สร้างระบบปุ่มกดเซฟและคืนยศอัตโนมัติ")
+@app_commands.describe(image_url="ใส่ลิงก์รูปภาพแบนเนอร์ (ไม่บังคับ)")
+async def setup_saveroles_command(interaction: discord.Interaction, image_url: str = "https://i.pinimg.com/736x/14/68/59/146859926bd33323535af3b8697b024d.jpg"):
     embed = discord.Embed(
-        title="⚡ AEGIS BOT / SHOP — CONTROL PANEL ⚡",
+        title="🛡️ ระบบเซฟและคืนยศ",
         description=(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"ยินดีต้อนรับ {interaction.user.mention} สู่ระบบ Aegis Bot / Shop\n"
-            "เลือกระยะเวลาจาก Dropdown ด้านล่าง\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"**ระดับของคุณ:**\n`{role_name}`\n\n"
-            "**ตารางเปรียบเทียบสิทธิ์:**\n"
-            "```text\n"
-            "╔══════════════╦══════════╦══════════╗\n"
-            "║   สิทธิ์     ║  ⭐ VIP  ║  👤 ปกติ ║\n"
-            "╠══════════════╬══════════╬══════════╣\n"
-            "║ ⏱ ยิงสูงสุด ║  500 วิ  ║  50 วิ   ║\n"
-            "║ ⏳ คูลดาวน์  ║  15 นาที ║  1 ชม.   ║\n"
-            "║ ⚡ ลำดับคิว  ║  สูง     ║  ปกติ    ║\n"
-            "╚══════════════╩══════════╩══════════╝\n"
-            "```\n"
-            "📌 **สิทธิ์ของคุณปัจจุบัน:**\n"
-            f"• [ยิงสูงสุด]     = `{max_sec}`\n"
-            f"• [คูลดาวน์]      = `{cd_time}`\n"
-            f"• [ตัวเลือกเวลา]  = `{time_options}`\n"
-            "• [Concurrent]    = `50 req`\n\n"
-            "🌐 **ระบบพร็อกซี่:**\n"
-            "• [สถานะ]    = `พร้อม`\n"
-            "• [จำนวน]    = `2,841 ตัว`\n"
-            "• [แหล่งที่มา] = `4 แหล่ง`\n"
-            "• [Cache]    = `5 นาที`\n\n"
-            "🟢 **สถานะระบบ:** ว่าง — พร้อมใช้งาน | คูลดาวน์: พร้อมใช้งาน\n\n"
-            "┌──────────────────────────────────────┐\n"
-            "│  📌 กฎการใช้งาน Aegis Bot / Shop     │\n"
-            "├──────────────────────────────────────┤\n"
-            "│ 1. ใช้ได้ 1 คนต่อครั้งเท่านั้น      │\n"
-            "│ 2. ห้ามยิงซ้ำก่อนหมดคูลดาวน์        │\n"
-            "│ 3. เลือกเวลา → เลือกโหมด → กรอก URL │\n"
-            "│ 4. โหมด Direct = เร็ว / Proxy = ซ่อน │\n"
-            "│ 5. ผลลัพธ์จะแสดงเมื่อยิงเสร็จ       │\n"
-            "└──────────────────────────────────────┘"
+            "กดปุ่มด้านล่างเพื่อจัดการยศของคุณได้เลย!\n\n"
+            "> 🛡️ **เซฟยศ** — บันทึกยศทั้งหมดที่คุณมีอยู่ตอนนี้\n"
+            "> 🛠️ **คืนยศ** — กู้คืนยศที่คุณเคยเซฟไว้\n"
+            "> 👤 **โปรไฟล์** — ตรวจสอบข้อมูลและยศของคุณ\n\n"
+            "⚠️ **หมายเหตุ:** ระบบจะเซฟยศให้คุณอัตโนมัติเมื่อคุณออกจากเซิร์ฟเวอร์ด้วย"
         ),
-        color=0xe74c3c
+        color=0xf1c40f
     )
-    embed.set_footer(text="Aegis Bot / Shop V6 — สำหรับทดสอบและเล่นสนุกเท่านั้น")
+    
+    embed.set_image(url=image_url)
+    embed.set_footer(text="Aegis Bot / Shop — Role Saver System")
 
-    view = DdosControlPanelView(is_vip)
+    view = SaveRestoreRoleView()
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ เปิดแผงควบคุม Aegis สำเร็จ!", ephemeral=True)
+    await interaction.response.send_message("✅ สร้างหน้าต่างระบบเซฟและคืนยศ (พร้อมรูปภาพที่คุณกำหนด) เรียบร้อยแล้วครับ", ephemeral=True)
+
+
+# ระบบเซฟยศอัตโนมัติเมื่อสมาชิกออกจากเซิร์ฟเวอร์
+@bot.event
+async def on_member_remove(member: discord.Member):
+    guild = member.guild
+    roles_to_save = [role.id for role in member.roles if role != guild.default_role and guild.me.top_role > role]
+    if roles_to_save:
+        user_saved_roles[member.id] = roles_to_save
+        print(f"📌 เซฟยศอัตโนมัติให้กับ {member.name} (ID: {member.id}) จำนวน {len(roles_to_save)} ยศเรียบร้อย")
 
 
 # ==========================================
@@ -275,7 +213,7 @@ async def change_status():
     statuses = [
         discord.Game(name=f"Aegis Bot | ให้บริการ {server_count} เซิร์ฟเวอร์"),
         discord.Game(name="Aegis Shop | ระบบรับยศ & Ticket พร้อมใช้งาน"),
-        discord.Game(name="Aegis | ระบบแปลภาษา & Token Checker")
+        discord.Game(name="Aegis | ระบบเซฟยศและจัดการเซิร์ฟเวอร์")
     ]
     
     if not hasattr(change_status, "index"):
@@ -292,6 +230,7 @@ async def on_ready():
     bot.add_view(TicketView())
     bot.add_view(TranslateView())
     bot.add_view(TokenCheckerView())
+    bot.add_view(SaveRestoreRoleView())
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Aegis Bot System)")
