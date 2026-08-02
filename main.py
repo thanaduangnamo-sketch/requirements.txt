@@ -239,8 +239,8 @@ async def buy_vip_angpao_command(
         ),
         color=0x7f8c8d  # โทนสีเทา
     )
-    # อัปเดตลิงก์รูปภาพใหม่ตามที่คุณต้องการ
-    embed.set_image(url="https://i.pinimg.com/236x/69/38/a8/6938a8608a33e27135a2d612d785641e.jpg")
+    # อัปเดตลิงก์รูปภาพใหม่ล่าสุดตามที่คุณต้องการ
+    embed.set_image(url="https://i.pinimg.com/1200x/a1/24/6e/a1246ecbb25c304e276e03e9181326dd.jpg")
     embed.set_footer(text="AEGIS BOT / SHOP — ANGPAO VIP SYSTEM")
 
     view = BuyVipAngpaoView(role_ids)
