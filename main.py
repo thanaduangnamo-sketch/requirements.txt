@@ -6,6 +6,7 @@ import aiohttp
 from flask import Flask
 from threading import Thread
 import asyncio
+import random
 
 # ==========================================
 # 🌐 ระบบเปิดเว็บจำลอง (Keep-Alive) สำหรับรัน 24 ชม.
@@ -41,63 +42,119 @@ verify_config = {}
 
 
 # ==========================================
-# 🛡️ 1. ระบบยืนยันตัวตน (Verification System)
+# 🛡️ 1. ระบบยืนยันตัวตน (Verification System - Quiz & Countdown)
 # ==========================================
-class VerifyModal(discord.ui.Modal, title="✨ ระบบยืนยันตัวตน"):
-    answer = discord.ui.TextInput(
-        label="กรอกรหัสผ่าน / ชื่อเล่น หรือข้อมูลยืนยัน",
-        style=discord.TextStyle.short,
-        placeholder="กรอกข้อมูลที่นี่...",
-        required=True,
-        min_length=1,
-        max_length=100,
-    )
-
-    def __init__(self, guild_id: int):
-        super().__init__()
+class VerifyQuizSelect(discord.ui.Select):
+    def __init__(self, correct_answer: str, all_options: list, guild_id: int):
+        self.correct_answer = correct_answer
         self.guild_id = guild_id
+        
+        # สุ่มสลับตำแหน่งตัวเลือก
+        random.shuffle(all_options)
+        
+        options = [
+            discord.SelectOption(label=opt, value=opt, description="เลือกคำตอบนี้") 
+            for opt in all_options
+        ]
+        super().__init__(placeholder="🔠 กรุณาเลือกคำตอบที่ถูกต้อง...", min_values=1, max_values=1, options=options)
 
-    async def on_submit(self, interaction: discord.Interaction):
+    async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
+        user = interaction.user
+        guild = interaction.guild
+        selected_value = self.values[0]
 
         config = verify_config.get(self.guild_id)
         if not config:
-            return await interaction.edit_original_response(content="❌ เกิดข้อผิดพลาด: ระบบยืนยันตัวตนยังไม่ได้ตั้งค่าในเซิร์ฟเวอร์นี้ กรุณาให้แอดมินใช้คำสั่ง /Aegis_verify อีกครั้ง")
+            return await interaction.edit_original_response(content="❌ เกิดข้อผิดพลาด: ระบบยืนยันตัวตนยังไม่ได้ตั้งค่า", view=None)
 
-        role_id = config.get("role_id")
-        log_channel_id = config.get("log_channel_id")
+        # ⏳ ระบบนับถอยหลัง 5 4 3 2 1
+        countdown_embed = discord.Embed(
+            title="⏳ กำลังตรวจสอบคำตอบ...",
+            description="ระบบกำลังประมวลผล:\n**5...**",
+            color=0xf1c40f
+        )
+        msg = await interaction.edit_original_response(embed=countdown_embed, view=None)
+        
+        for i in [4, 3, 2, 1]:
+            await asyncio.sleep(1)
+            countdown_embed.description = f"ระบบกำลังประมวลผล:\n**{i}...**"
+            await interaction.edit_original_response(embed=countdown_embed)
+        
+        await asyncio.sleep(1)
 
-        member = interaction.user
-        guild = interaction.guild
-        role = guild.get_role(role_id)
+        # ตรวจสอบว่าตอบถูกหรือไม่
+        if selected_value == self.correct_answer:
+            role_id = config.get("role_id")
+            log_channel_id = config.get("log_channel_id")
+            role = guild.get_role(role_id)
 
-        if not role:
-            return await interaction.edit_original_response(content="❌ เกิดข้อผิดพลาด: ไม่พบยศที่ตั้งค่าไว้ กรุณาแจ้งแอดมิน")
+            if not role:
+                return await interaction.edit_original_response(content="❌ เกิดข้อผิดพลาด: ไม่พบยศที่ตั้งค่าไว้ในเซิร์ฟเวอร์", embed=None)
 
-        try:
-            await member.add_roles(role)
-            success_embed = discord.Embed(
-                title="✅ ยืนยันตัวตนสำเร็จ!",
-                description=f"ยินดีด้วยครับคุณได้รับยศ **{role.name}** เรียบร้อยแล้ว! 🎉",
-                color=0x2ecc71
-            )
-            await interaction.edit_original_response(embed=success_embed)
-        except Exception as e:
-            return await interaction.edit_original_response(content=f"❌ เกิดข้อผิดพลาดในการให้ยศ: {e}")
+            try:
+                await user.add_roles(role)
+                
+                # ส่งข้อความยินดีต้อนรับเข้า DM
+                try:
+                    dm_embed = discord.Embed(
+                        title="🎉 ยืนยันตัวตนสำเร็จ!",
+                        description=f"ยินดีด้วยครับ คุณได้ผ่านการยืนยันตัวตนในเซิร์ฟเวอร์ **{guild.name}** และได้รับยศ **{role.name}** เรียบร้อยแล้ว!",
+                        color=0x2ecc71
+                    )
+                    await user.send(embed=dm_embed)
+                except:
+                    pass # เผื่อผู้ใช้ปิดรับ DM
 
-        if log_channel_id:
-            log_channel = guild.get_channel(log_channel_id)
-            if log_channel:
-                log_embed = discord.Embed(
-                    title="🛡️ มีผู้ยืนยันตัวตนสำเร็จ",
-                    color=0x2ecc71,
-                    timestamp=discord.utils.utcnow()
+                success_embed = discord.Embed(
+                    title="✅ ยืนยันตัวตนสำเร็จ!",
+                    description=f"คุณตอบถูกต้อง! ได้รับยศ **{role.name}** เรียบร้อยแล้ว 🎉 (ระบบได้ส่งข้อความไปหาคุณทาง DM แล้ว)",
+                    color=0x2ecc71
                 )
-                log_embed.add_field(name="👤 ผู้ใช้งาน", value=f"{member.mention} (`{member.name}`)", inline=False)
-                log_embed.add_field(name="🆔 User ID", value=f"`{member.id}`", inline=False)
-                log_embed.add_field(name="📝 ข้อมูลที่กรอก", value=f"```{self.answer.value}```", inline=False)
-                log_embed.set_thumbnail(url=member.display_avatar.url)
-                await log_channel.send(embed=log_embed)
+                await interaction.edit_original_response(embed=success_embed)
+
+                # ส่ง Log (ถ้ามีตั้งค่าห้องไว้)
+                if log_channel_id:
+                    log_channel = guild.get_channel(log_channel_id)
+                    if log_channel:
+                        log_embed = discord.Embed(
+                            title="🛡️ มีผู้ยืนยันตัวตนสำเร็จ",
+                            color=0x2ecc71,
+                            timestamp=discord.utils.utcnow()
+                        )
+                        log_embed.add_field(name="👤 ผู้ใช้งาน", value=f"{user.mention} (`{user.name}`)", inline=False)
+                        log_embed.add_field(name="🆔 User ID", value=f"`{user.id}`", inline=False)
+                        log_embed.add_field(name="📝 ตอบคำถาม", value=f"```ตอบถูก: {selected_value}```", inline=False)
+                        log_embed.set_thumbnail(url=user.display_avatar.url)
+                        await log_channel.send(embed=log_embed)
+
+            except Exception as e:
+                await interaction.edit_original_response(content=f"❌ เกิดข้อผิดพลาดในการให้ยศ: {e}", embed=None)
+        else:
+            fail_embed = discord.Embed(
+                title="❌ ตอบผิดครับ!",
+                description=f"คุณเลือก: `{selected_value}` ซึ่งไม่ถูกต้อง\nกรุณากดปุ่มยืนยันตัวตนใหม่อีกครั้งเพื่อลองใหม่",
+                color=0xe74c3c
+            )
+            await interaction.edit_original_response(embed=fail_embed)
+
+class VerifyQuizView(discord.ui.View):
+    def __init__(self, guild_id: int):
+        super().__init__(timeout=60)
+        # ชุดคำถามสุ่ม (ถูก 1 ข้อ, ผิด 2 ข้อ)
+        questions_pool = [
+            {"question": "ข้อใดคือชื่อบอทระบบความปลอดภัยนี้?", "correct": "Aegis", "wrongs": ["Discord", "Python"]},
+            {"question": "สัญลักษณ์อีโมจิที่ใช้บ่อยในคำสั่งนี้คืออะไร?", "correct": "[ ✨ ]", "wrongs": ["[ ❌ ]", "[ 📌 ]"]},
+            {"question": "1 + 1 ได้ผลลัพธ์เท่ากับเท่าใด?", "correct": "2", "wrongs": ["3", "11"]},
+        ]
+        selected_q = random.choice(questions_pool)
+        correct = selected_q["correct"]
+        all_opts = [correct] + selected_q["wrongs"]
+        
+        self.add_item(VerifyQuizSelect(correct_answer=correct, all_options=all_opts, guild_id=guild_id))
+        
+        # เก็บโจทย์ไว้โชว์ตอนกด
+        self.question_text = selected_q["question"]
 
 class VerifyView(discord.ui.View):
     def __init__(self, guild_id: int):
@@ -113,7 +170,14 @@ class VerifyView(discord.ui.View):
             if already_role and already_role in interaction.user.roles:
                 return await interaction.response.send_message("ℹ️ คุณได้ทำการยืนยันตัวตนไปแล้วเรียบร้อยครับ", ephemeral=True)
 
-        await interaction.response.send_modal(VerifyModal(interaction.guild.id))
+        # สร้าง View คำถามสุ่ม
+        quiz_view = VerifyQuizView(interaction.guild.id)
+        embed = discord.Embed(
+            title="🧩 คำถามทดสอบยืนยันตัวตน",
+            description=f"**คำถาม:** {quiz_view.question_text}\n\nกรุณาเลือกคำตอบที่ถูกต้องจากเมนูด้านล่างภายใน 60 วินาที",
+            color=0x3498db
+        )
+        await interaction.response.send_message(embed=embed, view=quiz_view, ephemeral=True)
 
     @discord.ui.button(label="คู่มือการยืนยันตัวตน", style=discord.ButtonStyle.secondary, emoji="🎄", custom_id="manual_button_link:persistent")
     async def manual_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -147,7 +211,7 @@ async def aegis_verify(interaction: discord.Interaction, เลือกยศ: 
             f"⁺ ✦  *   🐈 **ระบบยืนยันตัวตน**\n"
             "•   ยืนยันตนง่ายๆ ระบบคุณภาพ\n"
             f"•   ยืนยันแล้วจะได้รับบทบาท **{เลือกยศ.mention}**\n"
-            "•   ยืนยันไม่กี่ขั้นตอนก็ได้รับบทบาท\n"
+            "•   ตอบคำถามสุ่มเพื่อรับยศและข้อความแจ้งเตือนทาง DM\n"
             "•   มีคู่มือการใช้งานระบบแบบละเอียด"
         ),
         color=0x2b2d31,
