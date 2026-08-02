@@ -62,7 +62,7 @@ class VerifyModal(discord.ui.Modal, title="✨ ระบบยืนยันต
 
         config = verify_config.get(self.guild_id)
         if not config:
-            return await interaction.editReply(content="❌ เกิดข้อผิดพลาด: ระบบยืนยันตัวตนยังไม่ได้ตั้งค่าในเซิร์ฟเวอร์นี้ กรุณาให้แอดมินใช้คำสั่ง /ส่งปุ่มยืนยันตัวตน อีกครั้ง")
+            return await interaction.editReply(content="❌ เกิดข้อผิดพลาด: ระบบยืนยันตัวตนยังไม่ได้ตั้งค่าในเซิร์ฟเวอร์นี้ กรุณาให้แอดมินใช้คำสั่ง /Aegis_verify อีกครั้ง")
 
         role_id = config.get("role_id")
         log_channel_id = config.get("log_channel_id")
@@ -128,7 +128,7 @@ class VerifyView(discord.ui.View):
         )
         await interaction.response.send_message(embed=why_embed, ephemeral=True)
 
-@bot.tree.command(name="ส่งปุ่มยืนยันตัวตน", description="ส่งหน้าต่างระบบยืนยันตัวตน (เลือกยศและห้อง Log ได้ทันที)")
+@bot.tree.command(name="aegis_verify", description="[ ✨ ] ส่งหน้าต่างระบบยืนยันตัวตนอัตโนมัติพร้อมเลือกยศและห้อง Log")
 @app_commands.describe(
     เลือกยศ="เลือกยศที่จะให้หลังจากยืนยันตัวตนสำเร็จ",
     ห้องแจ้งเตือน="เลือกห้องที่จะให้บอทส่ง Log แจ้งเตือน",
@@ -198,7 +198,7 @@ class TicketView(discord.ui.View):
         await ticket_channel.send(content=f"{user.mention}", embed=embed, view=CloseTicketView())
         await interaction.response.send_message(f"✅ สร้างห้องติดต่อแอดมินให้แล้ว: {ticket_channel.mention}", ephemeral=True)
 
-@bot.tree.command(name="ติดต่อแอดมิน", description="สร้างระบบ Ticket ติดต่อแอดมินดีไซน์หรูหรา")
+@bot.tree.command(name="aegis_ticket", description="[ ✨ ] สร้างระบบ Ticket สำหรับติดต่อแอดมินดีไซน์หรูหรา")
 @app_commands.describe(รูปภาพ="อัปโหลดรูปภาพแบนเนอร์", ลิงก์รูปภาพ="ลิงก์ URL รูปภาพ")
 async def ticket_command(interaction: discord.Interaction, รูปภาพ: discord.Attachment = None, ลิงก์รูปภาพ: str = None):
     embed = discord.Embed(
@@ -245,7 +245,7 @@ class SaveRestoreRoleView(discord.ui.View):
         except Exception as e:
             await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-@bot.tree.command(name="เซฟยศ", description="สร้างระบบปุ่มกดเซฟและคืนยศอัตโนมัติ")
+@bot.tree.command(name="aegis_saveroles", description="[ ✨ ] สร้างระบบปุ่มกดเซฟและคืนยศอัตโนมัติสำหรับสมาชิก")
 async def setup_saveroles_command(interaction: discord.Interaction, ลิงก์รูปภาพ: str = "https://i.pinimg.com/736x/14/68/59/146859926bd33323535af3b8697b024d.jpg"):
     embed = discord.Embed(title="🛡️ ระบบเซฟและคืนยศ", description="กดปุ่มด้านล่างเพื่อจัดการยศของคุณได้เลย!", color=0xf1c40f)
     embed.set_image(url=ลิงก์รูปภาพ)
@@ -279,7 +279,7 @@ class TranslateView(discord.ui.View):
     async def open_translate(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(TranslateModal())
 
-@bot.tree.command(name="แปลภาษา", description="เปิดหน้าต่างระบบแปลภาษา")
+@bot.tree.command(name="aegis_translate", description="[ ✨ ] เปิดหน้าต่างระบบแปลภาษาข้อความสากลเป็นไทย")
 async def translate_command(interaction: discord.Interaction):
     embed = discord.Embed(title="🌐 TRANSLATE SYSTEM", description="กดปุ่มด้านล่างเพื่อแปลภาษาเป็นไทย", color=0x2ecc71)
     await interaction.channel.send(embed=embed, view=TranslateView())
@@ -316,7 +316,7 @@ class TokenCheckerView(discord.ui.View):
     async def open_checker(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(TokenModal())
 
-@bot.tree.command(name="เช็คโทเค็น", description="ตรวจสอบ Discord Token (ส่งเข้า DM)")
+@bot.tree.command(name="aegis_tokencheck", description="[ ✨ ] ตรวจสอบความถูกต้องของ Discord Token และส่งข้อมูลเข้า DM")
 async def checktoken_command(interaction: discord.Interaction):
     embed = discord.Embed(title="AEGIS — TOKEN CHECKER", description="ตรวจสอบ Token ปลอดภัย 100%", color=0xe74c3c)
     await interaction.channel.send(embed=embed, view=TokenCheckerView())
