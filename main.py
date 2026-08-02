@@ -25,24 +25,200 @@ def keep_alive():
     t.start()
 
 # ==========================================
-# ⚙️ ตั้งค่าพื้นฐานของบอท
+# ⚙️ ตั้งค่าพื้นฐานของบอทและ Intents
 # ==========================================
-token = os.environ.get("DISCORD_TOKEN") # ดึง Token จาก Environment Variables
+token = os.environ.get("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.guilds = True
 intents.members = True
-intents.moderation = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ตัวแปรจำลองสำหรับเก็บยศ (User ID -> List of Role IDs)
 user_saved_roles = {}
+
+# ตัวแปรชั่วคราวเก็บค่าการตั้งค่าระบบยืนยันตัวตนต่อเซิร์ฟเวอร์
+verify_config = {}
 
 
 # ==========================================
-# 🛡️ 1. ระบบเซฟและคืนยศ (Save & Restore Roles)
+# 🛡️ 1. ระบบยืนยันตัวตน (Verification System)
+# ==========================================
+class VerifyModal(discord.ui.Modal, title="✨ ระบบยืนยันตัวตน"):
+    answer = discord.ui.TextInput(
+        label="กรอกรหัสผ่าน / ชื่อเล่น หรือข้อมูลยืนยัน",
+        style=discord.TextStyle.short,
+        placeholder="กรอกข้อมูลที่นี่...",
+        required=True,
+        min_length=1,
+        max_length=100,
+    )
+
+    def __init__(self, guild_id: int):
+        super().__init__()
+        self.guild_id = guild_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        config = verify_config.get(self.guild_id)
+        if not config:
+            return await interaction.editReply(content="❌ เกิดข้อผิดพลาด: ระบบยืนยันตัวตนยังไม่ได้ตั้งค่าในเซิร์ฟเวอร์นี้ กรุณาให้แอดมินใช้คำสั่ง /ส่งปุ่มยืนยันตัวตน อีกครั้ง")
+
+        role_id = config.get("role_id")
+        log_channel_id = config.get("log_channel_id")
+
+        member = interaction.user
+        guild = interaction.guild
+        role = guild.get_role(role_id)
+
+        if not role:
+            return await interaction.editReply(content="❌ เกิดข้อผิดพลาด: ไม่พบยศที่ตั้งค่าไว้ กรุณาแจ้งแอดมิน")
+
+        try:
+            await member.add_roles(role)
+            success_embed = discord.Embed(
+                title="✅ ยืนยันตัวตนสำเร็จ!",
+                description=f"ยินดีด้วยครับคุณได้รับยศ **{role.name}** เรียบร้อยแล้ว! 🎉",
+                color=0x2ecc71
+            )
+            await interaction.editReply(embed=success_embed)
+        except Exception as e:
+            return await interaction.editReply(content=f"❌ เกิดข้อผิดพลาดในการให้ยศ: {e}")
+
+        # ส่ง Log ไปยังห้องแอดมินที่เลือกไว้
+        if log_channel_id:
+            log_channel = guild.get_channel(log_channel_id)
+            if log_channel:
+                log_embed = discord.Embed(
+                    title="🛡️ มีผู้ยืนยันตัวตนสำเร็จ",
+                    color=0x2ecc71,
+                    timestamp=discord.utils.utcnow()
+                )
+                log_embed.add_field(name="👤 ผู้ใช้งาน", value=f"{member.mention} (`{member.name}`)", inline=False)
+                log_embed.add_field(name="🆔 User ID", value=f"`{member.id}`", inline=False)
+                log_embed.add_field(name="📝 ข้อมูลที่กรอก", value=f"```{self.answer.value}```", inline=False)
+                log_embed.set_thumbnail(url=member.display_avatar.url)
+                await log_channel.send(embed=log_embed)
+
+class VerifyView(discord.ui.View):
+    def __init__(self, guild_id: int):
+        super().__init__(timeout=None)
+        self.guild_id = guild_id
+
+    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.success, emoji="🌲", custom_id="verify_button_main:persistent")
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        config = verify_config.get(interaction.guild.id)
+        if config:
+            role_id = config.get("role_id")
+            already_role = interaction.guild.get_role(role_id)
+            if already_role and already_role in interaction.user.roles:
+                return await interaction.response.send_message("ℹ️ คุณได้ทำการยืนยันตัวตนไปแล้วเรียบร้อยครับ", ephemeral=True)
+
+        await interaction.response.send_modal(VerifyModal(interaction.guild.id))
+
+    @discord.ui.button(label="คู่มือการยืนยันตัวตน", style=discord.ButtonStyle.secondary, emoji="🎄", custom_id="manual_button_link:persistent")
+    async def manual_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("📖 สามารถอ่านคู่มือการใช้งานได้ภายในเซิร์ฟเวอร์ครับ", ephemeral=True)
+
+    @discord.ui.button(label="why?", style=discord.ButtonStyle.secondary, emoji="🎄", custom_id="why_button_info:persistent")
+    async def why_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        why_embed = discord.Embed(
+            title="🎄 ทำไมต้องยืนยันตัวตน?",
+            description="ระบบนี้มีไว้เพื่อป้องกันบอทสแปม และคัดกรองสมาชิกเพื่อความปลอดภัยภายในเซิร์ฟเวอร์ครับ",
+            color=0x99aab5
+        )
+        await interaction.response.send_message(embed=why_embed, ephemeral=True)
+
+@bot.tree.command(name="ส่งปุ่มยืนยันตัวตน", description="ส่งหน้าต่างระบบยืนยันตัวตน (เลือกยศและห้อง Log ได้ทันที)")
+@app_commands.describe(
+    เลือกยศ="เลือกยศที่จะให้หลังจากยืนยันตัวตนสำเร็จ",
+    ห้องแจ้งเตือน="เลือกห้องที่จะให้บอทส่ง Log แจ้งเตือน",
+    ลิงก์รูปภาพ="ลิงก์รูปภาพแบนเนอร์ (ไม่บังคับ)"
+)
+@app_commands.default_permissions(administrator=True)
+async def send_verify_panel(interaction: discord.Interaction, เลือกยศ: discord.Role, ห้องแจ้งเตือน: discord.TextChannel, ลิงก์รูปภาพ: str = "https://i.pinimg.com/564x/f6/78/c8/f678c8929c79940c1b2269390c07b690.jpg"):
+    # บันทึกค่าลง Dictionary ตาม Guild ID
+    verify_config[interaction.guild.id] = {
+        "role_id": เลือกยศ.id,
+        "log_channel_id": ห้องแจ้งเตือน.id
+    }
+
+    embed = discord.Embed(
+        description=(
+            "✨ ・ ✨ 🇹‌🇭‌🇦‌🇮‌🇱‌🇦‌🇳‌🇩‌ ✨ ・ ✨\n"
+            f"⁺ ✦  *   🐈 **ระบบยืนยันตัวตน**\n"
+            "•   ยืนยันตนง่ายๆ ระบบคุณภาพ\n"
+            f"•   ยืนยันแล้วจะได้รับบทบาท **{เลือกยศ.mention}**\n"
+            "•   ยืนยันไม่กี่ขั้นตอนก็ได้รับบทบาท\n"
+            "•   มีคู่มือการใช้งานระบบแบบละเอียด"
+        ),
+        color=0x2b2d31,
+    )
+    embed.set_image(url=ลิงก์รูปภาพ)
+    embed.set_footer(text="© ระบบยืนยันตัวตนอัตโนมัติ")
+
+    await interaction.channel.send(embed=embed, view=VerifyView(interaction.guild.id))
+    await interaction.response.send_message(f"✅ ตั้งค่าและส่งแผงระบบยืนยันตัวตนเรียบร้อย! (ยศ: {เลือกยศ.mention}, ห้อง Log: {ห้องแจ้งเตือน.mention})", ephemeral=True)
+
+
+# ==========================================
+# 🎫 2. ระบบ Ticket (ติดต่อแอดมิน)
+# ==========================================
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="ปิด Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="aegis_persistent_close_ticket:button")
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("🔒 กำลังปิดห้องนี้ใน 3 วินาที...", ephemeral=True)
+        await asyncio.sleep(3)
+        await interaction.channel.delete()
+
+class TicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="สร้าง Ticket", style=discord.ButtonStyle.secondary, emoji="🎟️", custom_id="aegis_persistent_ticket:button")
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild, user = interaction.guild, interaction.user
+        for channel in guild.text_channels:
+            if channel.topic and f"ID: {user.id}" in channel.topic:
+                return await interaction.response.send_message(f"❌ คุณมีห้องติดต่อเปิดอยู่แล้วครับ: {channel.mention}", ephemeral=True)
+
+        category = discord.utils.get(guild.categories, name="🎫 AEGIS TICKETS") or await guild.create_category("🎫 AEGIS TICKETS")
+        existing_tickets = [int(c.name.split("-")[1]) for c in guild.text_channels if c.name.startswith("ticket-") and c.name.split("-")[1].isdigit()]
+        next_number = max(existing_tickets) + 1 if existing_tickets else 1
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
+        }
+        ticket_channel = await guild.create_text_channel(name=f"ticket-{next_number}", category=category, overwrites=overwrites, topic=f"ID: {user.id}")
+        
+        embed = discord.Embed(title=f"📩 เปิด Ticket #{next_number} สำเร็จ", description=f"{user.mention} แจ้งรายละเอียดปัญหาหรือเรื่องที่ต้องการติดต่อแอดมินไว้ได้เลยครับ!", color=0x2b2d31)
+        await ticket_channel.send(content=f"{user.mention}", embed=embed, view=CloseTicketView())
+        await interaction.response.send_message(f"✅ สร้างห้องติดต่อแอดมินให้แล้ว: {ticket_channel.mention}", ephemeral=True)
+
+@bot.tree.command(name="ติดต่อแอดมิน", description="สร้างระบบ Ticket ติดต่อแอดมินดีไซน์หรูหรา")
+@app_commands.describe(รูปภาพ="อัปโหลดรูปภาพแบนเนอร์", ลิงก์รูปภาพ="ลิงก์ URL รูปภาพ")
+async def ticket_command(interaction: discord.Interaction, รูปภาพ: discord.Attachment = None, ลิงก์รูปภาพ: str = None):
+    embed = discord.Embed(
+        title="🎟️  ระบบ Ticket",
+        description="━━━━━━━━━━━━━━━━━━━━━━\n> \"ทุกปัญหา มีทางออก\"\n> \"ทีมงานพร้อมช่วยเหลือคุณ\"\n━━━━━━━━━━━━━━━━━━━━━━\n\n**กดปุ่มด้านล่างเพื่อสร้าง Ticket**",
+        color=0x2b2d31
+    )
+    if รูปภาพ: embed.set_image(url=รูปภาพ.url)
+    elif ลิงก์รูปภาพ: embed.set_image(url=ลิงก์รูปภาพ)
+    
+    await interaction.channel.send(embed=embed, view=TicketView())
+    await interaction.response.send_message("✅ ส่งหน้าต่าง Ticket เรียบร้อย", ephemeral=True)
+
+
+# ==========================================
+# 🛡️ 3. ระบบเซฟและคืนยศ (Save & Restore Roles)
 # ==========================================
 class SaveRestoreRoleView(discord.ui.View):
     def __init__(self):
@@ -50,76 +226,39 @@ class SaveRestoreRoleView(discord.ui.View):
 
     @discord.ui.button(label="เซฟยศของฉัน", style=discord.ButtonStyle.primary, emoji="🛡️", custom_id="aegis_save_role:button")
     async def save_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user = interaction.user
-        guild = interaction.guild
+        user, guild = interaction.user, interaction.guild
         roles_to_save = [role.id for role in user.roles if role != guild.default_role and guild.me.top_role > role]
         user_saved_roles[user.id] = roles_to_save
         
-        embed = discord.Embed(
-            title="🛡️ สำเร็จ — บันทึกยศเรียบร้อย",
-            description=f"✅ ทำการเซฟยศทั้งหมดของคุณจำนวน **{len(roles_to_save)} ยศ** เรียบร้อยแล้วครับ!",
-            color=0xf1c40f
-        )
+        embed = discord.Embed(title="🛡️ สำเร็จ — บันทึกยศเรียบร้อย", description=f"✅ ทำการเซฟยศทั้งหมดของคุณจำนวน **{len(roles_to_save)} ยศ** เรียบร้อยแล้ว!", color=0xf1c40f)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="คืนยศของฉัน", style=discord.ButtonStyle.danger, emoji="🛠️", custom_id="aegis_restore_role:button")
     async def restore_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user = interaction.user
-        guild = interaction.guild
-
+        user, guild = interaction.user, interaction.guild
         if user.id not in user_saved_roles or not user_saved_roles[user.id]:
-            return await interaction.response.send_message("❌ ไม่พบข้อมูลการเซฟยศของคุณในระบบ กรุณากด 'เซฟยศของฉัน' ก่อนครับ", ephemeral=True)
+            return await interaction.response.send_message("❌ ไม่พบข้อมูลการเซฟยศของคุณ กรุณากด 'เซฟยศของฉัน' ก่อนครับ", ephemeral=True)
 
         saved_role_ids = user_saved_roles[user.id]
         roles_to_add = [guild.get_role(r_id) for r_id in saved_role_ids if guild.get_role(r_id) and guild.me.top_role > guild.get_role(r_id)]
 
         try:
             await user.add_roles(*roles_to_add)
-            embed = discord.Embed(
-                title="🛠️ สำเร็จ — คืนยศเรียบร้อย",
-                description=f"✅ ทำการคืนยศให้คุณสำเร็จจำนวน **{len(roles_to_add)} ยศ** เรียบร้อยแล้วครับ!",
-                color=0xf1c40f
-            )
+            embed = discord.Embed(title="🛠️ สำเร็จ — คืนยศเรียบร้อย", description=f"✅ คืนยศให้คุณสำเร็จจำนวน **{len(roles_to_add)} ยศ** แล้วครับ!", color=0xf1c40f)
             await interaction.response.send_message(embed=embed, ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการคืนยศ: {e}", ephemeral=True)
-
-    @discord.ui.button(label="โปรไฟล์ของฉัน", style=discord.ButtonStyle.secondary, emoji="👤", custom_id="aegis_profile_role:button")
-    async def profile_roles(self, interaction: discord.Interaction, button: discord.ui.Button):
-        user = interaction.user
-        guild = interaction.guild
-        saved_ids = user_saved_roles.get(user.id, [])
-        saved_role_names = [guild.get_role(r_id).name for r_id in saved_ids if guild.get_role(r_id)]
-        current_roles = [r.name for r in user.roles if r != guild.default_role]
-
-        embed = discord.Embed(
-            title=f"👤 โปรไฟล์ข้อมูลยศของ: {user.name}",
-            description=(
-                f"🛡️ **ยศที่เซฟไว้ในระบบ:** `{len(saved_ids)} ยศ`\n"
-                f"📋 รายชื่อยศที่เซฟ: {', '.join(saved_role_names) if saved_role_names else 'ยังไม่มีการเซฟ'}\n\n"
-                f"🏷️ **ยศปัจจุบันที่มี:** `{len(current_roles)} ยศ`\n"
-                f"📋 รายชื่อยศปัจจุบัน: {', '.join(current_roles) if current_roles else 'ไม่มี'}"
-            ),
-            color=0xf1c40f
-        )
-        embed.set_thumbnail(url=user.display_avatar.url)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
 @bot.tree.command(name="เซฟยศ", description="สร้างระบบปุ่มกดเซฟและคืนยศอัตโนมัติ")
-@app_commands.describe(ลิงก์รูปภาพ="ใส่ลิงก์รูปภาพแบนเนอร์ (ไม่บังคับ)")
 async def setup_saveroles_command(interaction: discord.Interaction, ลิงก์รูปภาพ: str = "https://i.pinimg.com/736x/14/68/59/146859926bd33323535af3b8697b024d.jpg"):
-    embed = discord.Embed(
-        title="🛡️ ระบบเซฟและคืนยศ",
-        description="กดปุ่มด้านล่างเพื่อจัดการยศของคุณได้เลย!\n\n> 🛡️ **เซฟยศ** — บันทึกยศทั้งหมด\n> 🛠️ **คืนยศ** — กู้คืนยศที่เคยเซฟไว้\n> 👤 **โปรไฟล์** — ตรวจสอบข้อมูลยศ",
-        color=0xf1c40f
-    )
+    embed = discord.Embed(title="🛡️ ระบบเซฟและคืนยศ", description="กดปุ่มด้านล่างเพื่อจัดการยศของคุณได้เลย!", color=0xf1c40f)
     embed.set_image(url=ลิงก์รูปภาพ)
     await interaction.channel.send(embed=embed, view=SaveRestoreRoleView())
     await interaction.response.send_message("✅ สร้างหน้าต่างระบบเซฟและคืนยศเรียบร้อย", ephemeral=True)
 
 
 # ==========================================
-# 🟩 2. ระบบรับยศทั่วไป
+# 🟩 4. ระบบรับยศทั่วไป
 # ==========================================
 class GeneralRoleView(discord.ui.View):
     def __init__(self, role_id: int):
@@ -129,7 +268,7 @@ class GeneralRoleView(discord.ui.View):
     @discord.ui.button(label="【 ☁️ กดเพื่อรับ/คืนยศ 】", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="general_role_button:dynamic")
     async def toggle_role(self, interaction: discord.Interaction, button: discord.ui.Button):
         role = interaction.guild.get_role(self.role_id)
-        if not role: return await interaction.response.send_message("❌ ไม่พบยศนี้", ephemeral=True)
+        if not role: return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบ", ephemeral=True)
         if role in interaction.user.roles:
             await interaction.user.remove_roles(role)
             await interaction.response.send_message(f"🗑️ คืนยศ **{role.name}** เรียบร้อย", ephemeral=True)
@@ -137,19 +276,15 @@ class GeneralRoleView(discord.ui.View):
             await interaction.user.add_roles(role)
             await interaction.response.send_message(f"✅ ได้รับยศ **{role.name}** เรียบร้อย", ephemeral=True)
 
-@bot.tree.command(name="รับยศ", description="สร้างระบบรับยศปุ่มกด")
+@bot.tree.command(name="รับยศ", description="สร้างปุ่มรับยศสำหรับสมาชิก")
 async def setup_roles_command(interaction: discord.Interaction, เลือกยศ: discord.Role):
-    embed = discord.Embed(
-        title="💬 Aegis Bot — ระบบรับยศทั่วไป",
-        description=f"🔵 : กดปุ่มด้านล่างเพื่อรับ/คืนยศ **{เลือกยศ.name}**",
-        color=0x2b2d31
-    )
+    embed = discord.Embed(title="💬 Aegis Bot — ระบบรับยศ", description=f"🔵 : กดปุ่มด้านล่างเพื่อรับ/คืนยศ **{เลือกยศ.name}**", color=0x2b2d31)
     await interaction.channel.send(embed=embed, view=GeneralRoleView(เลือกยศ.id))
     await interaction.response.send_message(f"✅ สร้างปุ่มรับยศ **{เลือกยศ.name}** เรียบร้อย", ephemeral=True)
 
 
 # ==========================================
-# 🌐 3. ระบบแปลภาษา (Translate)
+# 🌐 5. ระบบแปลภาษา
 # ==========================================
 class TranslateModal(discord.ui.Modal, title="🌐 ระบบแปลภาษาอัตโนมัติ"):
     text_input = discord.ui.TextInput(label="ข้อความที่ต้องการแปล", style=discord.TextStyle.paragraph, required=True)
@@ -176,13 +311,13 @@ class TranslateView(discord.ui.View):
 
 @bot.tree.command(name="แปลภาษา", description="เปิดหน้าต่างระบบแปลภาษา")
 async def translate_command(interaction: discord.Interaction):
-    embed = discord.Embed(title="🌐 TRANSLATE SYSTEM", description="กดปุ่มด้านล่างเพื่อแปลภาษาใดก็ได้เป็นภาษาไทย", color=0x2ecc71)
+    embed = discord.Embed(title="🌐 TRANSLATE SYSTEM", description="กดปุ่มด้านล่างเพื่อแปลภาษาเป็นไทย", color=0x2ecc71)
     await interaction.channel.send(embed=embed, view=TranslateView())
     await interaction.response.send_message("✅ ส่งหน้าต่างแปลภาษาเรียบร้อย", ephemeral=True)
 
 
 # ==========================================
-# 🔍 4. ระบบ TOKEN CHECKER
+# 🔍 6. ระบบ TOKEN CHECKER
 # ==========================================
 class TokenModal(discord.ui.Modal, title="TOKEN CHECKER"):
     token_input = discord.ui.TextInput(label="กรอก Discord Token", style=discord.TextStyle.paragraph, required=True)
@@ -195,8 +330,8 @@ class TokenModal(discord.ui.Modal, title="TOKEN CHECKER"):
                     return await interaction.followup.send("❌ Token ไม่ถูกต้องหรือหมดอายุ", ephemeral=True)
                 data = await resp.json()
         
-        embed = discord.Embed(title="✨ TOKEN CHECKER RESULT ✨", description="ส่งผลลัพธ์ให้คุณเท่านั้น (DM)", color=0xe74c3c)
-        embed.add_field(name="🏷️ ผู้ใช้", value=f"`{data.get('username')}#{data.get('discriminator', '0')}`", inline=True)
+        embed = discord.Embed(title="✨ TOKEN CHECKER RESULT ✨", description="ส่งผลลัพธ์ให้คุณทาง DM", color=0xe74c3c)
+        embed.add_field(name="🏷️ ผู้ใช้", value=f"`{data.get('username')}`", inline=True)
         embed.add_field(name="📧 อีเมล", value=f"`{data.get('email', 'ซ่อนอยู่')}`", inline=True)
         try:
             await interaction.user.send(embed=embed)
@@ -213,104 +348,9 @@ class TokenCheckerView(discord.ui.View):
 
 @bot.tree.command(name="เช็คโทเค็น", description="ตรวจสอบ Discord Token (ส่งเข้า DM)")
 async def checktoken_command(interaction: discord.Interaction):
-    embed = discord.Embed(title="AEGIS — TOKEN CHECKER", description="ตรวจสอบข้อมูล Token ปลอดภัย 100% ไม่มีการบันทึกข้อมูล", color=0xe74c3c)
+    embed = discord.Embed(title="AEGIS — TOKEN CHECKER", description="ตรวจสอบ Token ปลอดภัย 100%", color=0xe74c3c)
     await interaction.channel.send(embed=embed, view=TokenCheckerView())
     await interaction.response.send_message("✅ ส่งหน้าต่าง Token Checker เรียบร้อย", ephemeral=True)
-
-
-# ==========================================
-# 🎫 5. ระบบ Ticket (ติดต่อแอดมิน - ดีไซน์ใหม่)
-# ==========================================
-class CloseTicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-    @discord.ui.button(label="ปิด Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="aegis_persistent_close_ticket:button")
-    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("🔒 กำลังปิดห้องนี้ใน 3 วินาที...", ephemeral=True)
-        await asyncio.sleep(3)
-        await interaction.channel.delete()
-
-class TicketView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-    @discord.ui.button(label="สร้าง Ticket", style=discord.ButtonStyle.secondary, emoji="🎟️", custom_id="aegis_persistent_ticket:button")
-    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
-        guild, user = interaction.guild, interaction.user
-        for channel in guild.text_channels:
-            if channel.topic and f"ID: {user.id}" in channel.topic:
-                return await interaction.response.send_message(f"❌ คุณมีห้องเปิดอยู่แล้ว: {channel.mention}", ephemeral=True)
-
-        category = discord.utils.get(guild.categories, name="🎫 AEGIS TICKETS") or await guild.create_category("🎫 AEGIS TICKETS")
-        existing_tickets = [int(c.name.split("-")[1]) for c in guild.text_channels if c.name.startswith("ticket-") and c.name.split("-")[1].isdigit()]
-        next_number = max(existing_tickets) + 1 if existing_tickets else 1
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
-        }
-        ticket_channel = await guild.create_text_channel(name=f"ticket-{next_number}", category=category, overwrites=overwrites, topic=f"ID: {user.id}")
-        
-        embed = discord.Embed(title=f"📩 เปิด Ticket #{next_number} สำเร็จ", description=f"{user.mention} แจ้งรายละเอียดปัญหาไว้ได้เลยครับ", color=0x2b2d31)
-        await ticket_channel.send(content=f"{user.mention}", embed=embed, view=CloseTicketView())
-        await interaction.response.send_message(f"✅ สร้างห้องติดต่อแอดมินให้แล้ว: {ticket_channel.mention}", ephemeral=True)
-
-@bot.tree.command(name="ติดต่อแอดมิน", description="สร้างระบบติดต่อแอดมิน / แจ้งปัญหา (Ticket ดีไซน์ใหม่)")
-@app_commands.describe(รูปภาพ="อัปโหลดรูปภาพแบนเนอร์", ลิงก์รูปภาพ="ลิงก์ URL รูปภาพ")
-async def ticket_command(interaction: discord.Interaction, รูปภาพ: discord.Attachment = None, ลิงก์รูปภาพ: str = None):
-    embed = discord.Embed(
-        title="🎟️  ระบบ Ticket",
-        description="━━━━━━━━━━━━━━━━━━━━━━\n> \"ทุกปัญหา มีทางออก\"\n> \"ทีมงานพร้อมช่วยเหลือคุณ\"\n━━━━━━━━━━━━━━━━━━━━━━\n\n**กดปุ่มด้านล่างเพื่อสร้าง Ticket**",
-        color=0x2b2d31
-    )
-    if รูปภาพ: embed.set_image(url=รูปภาพ.url)
-    elif ลิงก์รูปภาพ: embed.set_image(url=ลิงก์รูปภาพ)
-    
-    await interaction.channel.send(embed=embed, view=TicketView())
-    await interaction.response.send_message("✅ ส่งหน้าต่าง Ticket เรียบร้อย", ephemeral=True)
-
-
-# ==========================================
-# 🛡️ 6. ระบบยืนยันตัวตน (Verification)
-# ==========================================
-class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตัวตน (Verification)"):
-    verify_name = discord.ui.TextInput(label="กรอกชื่อเล่น / ชื่อในเกม", placeholder="เช่น John_Doe", style=discord.TextStyle.short, required=True)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        
-        # ⚠️ กำหนดตั้งค่าตรงนี้ ⚠️
-        ROLE_ID_TO_GIVE = 123456789012345678  # ใส่ ID ยศที่ต้องการให้
-        LOG_CHANNEL_ID = 123456789012345678   # ใส่ ID ช่องที่จะให้แจ้งเตือน
-        
-        role = interaction.guild.get_role(ROLE_ID_TO_GIVE)
-        if role:
-            try: await interaction.user.add_roles(role)
-            except Exception as e: print(f"Error giving role: {e}")
-
-        log_channel = interaction.guild.get_channel(LOG_CHANNEL_ID)
-        if log_channel:
-            log_embed = discord.Embed(title="🛡️ มีผู้ทำการยืนยันตัวตนสำเร็จ", color=0x2ecc71)
-            log_embed.add_field(name="👤 ผู้ใช้งาน", value=f"{interaction.user.mention} ({interaction.user.id})", inline=False)
-            log_embed.add_field(name="📝 ข้อมูลที่กรอก", value=f"`{self.verify_name.value}`", inline=False)
-            await log_channel.send(embed=log_embed)
-
-        await interaction.editReply(content="✅ **ยืนยันตัวตนสำเร็จ!** คุณได้รับยศเรียบร้อยครับ")
-
-class VerifyView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.success, emoji="✅", custom_id="verify_button:persistent")
-    async def verify_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(VerifyModal())
-
-@bot.tree.command(name="ส่งปุ่มยืนยันตัวตน", description="ส่งหน้าต่างยืนยันตัวตน")
-async def send_verify_command(interaction: discord.Interaction):
-    if not interaction.user.guild_permissions.administrator:
-        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้", ephemeral=True)
-    embed = discord.Embed(title="🛡️ ระบบยืนยันตัวตน", description="กรุณากดปุ่ม **'ยืนยันตัวตน'** ด้านล่างนี้เพื่อรับยศเข้าเซิร์ฟเวอร์", color=0x3498db)
-    await interaction.channel.send(embed=embed, view=VerifyView())
-    await interaction.response.send_message("✅ ส่งปุ่มยืนยันตัวตนเรียบร้อย", ephemeral=True)
 
 
 # ==========================================
@@ -321,7 +361,7 @@ async def change_status():
     server_count = len(bot.guilds)
     statuses = [
         discord.Game(name=f"ให้บริการ {server_count} เซิร์ฟเวอร์"),
-        discord.Game(name="ระบบรับยศ & Ticket พร้อมใช้งาน"),
+        discord.Game(name="ระบบยืนยันตัวตน & Ticket พร้อมใช้งาน"),
         discord.Game(name="ระบบความปลอดภัย Aegis")
     ]
     if not hasattr(change_status, "index"): change_status.index = 0
@@ -330,13 +370,11 @@ async def change_status():
 
 @bot.event
 async def on_ready():
-    # ลงทะเบียน Persistent Views (ให้ปุ่มกดได้ตลอดแม้บอทรีสตาร์ท)
     bot.add_view(TicketView())
     bot.add_view(CloseTicketView())
     bot.add_view(TranslateView())
     bot.add_view(TokenCheckerView())
     bot.add_view(SaveRestoreRoleView())
-    bot.add_view(VerifyView())
     
     await bot.tree.sync()
     if not change_status.is_running(): change_status.start()
@@ -351,8 +389,10 @@ async def on_member_remove(member: discord.Member):
 # ==========================================
 # 🚀 รันบอท
 # ==========================================
-if not token:
-    print("❌ ERROR: ไม่พบ DISCORD_TOKEN กรุณาตั้งค่า Token ใน Environment Variables")
-else:
-    keep_alive() # เปิด Web Server
-    bot.run(token)
+if __name__ == "__main__":
+    BOT_TOKEN = token or "YOUR_BOT_TOKEN"  # <-- ใส่ Token ของคุณตรงนี้
+    if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN":
+        print("❌ ERROR: กรุณาใส่ BOT_TOKEN ของคุณก่อนรันบอท")
+    else:
+        keep_alive()
+        bot.run(BOT_TOKEN)
