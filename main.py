@@ -37,8 +37,6 @@ intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 user_saved_roles = {}
-
-# ตัวแปรชั่วคราวเก็บค่าการตั้งค่าระบบยืนยันตัวตนต่อเซิร์ฟเวอร์
 verify_config = {}
 
 
@@ -87,7 +85,6 @@ class VerifyModal(discord.ui.Modal, title="✨ ระบบยืนยันต
         except Exception as e:
             return await interaction.editReply(content=f"❌ เกิดข้อผิดพลาดในการให้ยศ: {e}")
 
-        # ส่ง Log ไปยังห้องแอดมินที่เลือกไว้
         if log_channel_id:
             log_channel = guild.get_channel(log_channel_id)
             if log_channel:
@@ -139,7 +136,6 @@ class VerifyView(discord.ui.View):
 )
 @app_commands.default_permissions(administrator=True)
 async def send_verify_panel(interaction: discord.Interaction, เลือกยศ: discord.Role, ห้องแจ้งเตือน: discord.TextChannel, ลิงก์รูปภาพ: str = "https://i.pinimg.com/564x/f6/78/c8/f678c8929c79940c1b2269390c07b690.jpg"):
-    # บันทึกค่าลง Dictionary ตาม Guild ID
     verify_config[interaction.guild.id] = {
         "role_id": เลือกยศ.id,
         "log_channel_id": ห้องแจ้งเตือน.id
@@ -258,33 +254,7 @@ async def setup_saveroles_command(interaction: discord.Interaction, ลิงก
 
 
 # ==========================================
-# 🟩 4. ระบบรับยศทั่วไป
-# ==========================================
-class GeneralRoleView(discord.ui.View):
-    def __init__(self, role_id: int):
-        super().__init__(timeout=None)
-        self.role_id = role_id
-
-    @discord.ui.button(label="【 ☁️ กดเพื่อรับ/คืนยศ 】", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="general_role_button:dynamic")
-    async def toggle_role(self, interaction: discord.Interaction, button: discord.ui.Button):
-        role = interaction.guild.get_role(self.role_id)
-        if not role: return await interaction.response.send_message("❌ ไม่พบยศนี้ในระบบ", ephemeral=True)
-        if role in interaction.user.roles:
-            await interaction.user.remove_roles(role)
-            await interaction.response.send_message(f"🗑️ คืนยศ **{role.name}** เรียบร้อย", ephemeral=True)
-        else:
-            await interaction.user.add_roles(role)
-            await interaction.response.send_message(f"✅ ได้รับยศ **{role.name}** เรียบร้อย", ephemeral=True)
-
-@bot.tree.command(name="รับยศ", description="สร้างปุ่มรับยศสำหรับสมาชิก")
-async def setup_roles_command(interaction: discord.Interaction, เลือกยศ: discord.Role):
-    embed = discord.Embed(title="💬 Aegis Bot — ระบบรับยศ", description=f"🔵 : กดปุ่มด้านล่างเพื่อรับ/คืนยศ **{เลือกยศ.name}**", color=0x2b2d31)
-    await interaction.channel.send(embed=embed, view=GeneralRoleView(เลือกยศ.id))
-    await interaction.response.send_message(f"✅ สร้างปุ่มรับยศ **{เลือกยศ.name}** เรียบร้อย", ephemeral=True)
-
-
-# ==========================================
-# 🌐 5. ระบบแปลภาษา
+# 🌐 4. ระบบแปลภาษา
 # ==========================================
 class TranslateModal(discord.ui.Modal, title="🌐 ระบบแปลภาษาอัตโนมัติ"):
     text_input = discord.ui.TextInput(label="ข้อความที่ต้องการแปล", style=discord.TextStyle.paragraph, required=True)
@@ -317,7 +287,7 @@ async def translate_command(interaction: discord.Interaction):
 
 
 # ==========================================
-# 🔍 6. ระบบ TOKEN CHECKER
+# 🔍 5. ระบบ TOKEN CHECKER
 # ==========================================
 class TokenModal(discord.ui.Modal, title="TOKEN CHECKER"):
     token_input = discord.ui.TextInput(label="กรอก Discord Token", style=discord.TextStyle.paragraph, required=True)
@@ -354,7 +324,7 @@ async def checktoken_command(interaction: discord.Interaction):
 
 
 # ==========================================
-# 🤖 7. Event & Status Loop (เปิดระบบทำงาน)
+# 🤖 6. Event & Status Loop (เปิดระบบทำงาน)
 # ==========================================
 @tasks.loop(minutes=1)
 async def change_status():
@@ -390,7 +360,7 @@ async def on_member_remove(member: discord.Member):
 # 🚀 รันบอท
 # ==========================================
 if __name__ == "__main__":
-    BOT_TOKEN = token or "YOUR_BOT_TOKEN"  # <-- ใส่ Token ของคุณตรงนี้
+    BOT_TOKEN = token or "YOUR_BOT_TOKEN"
     if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN":
         print("❌ ERROR: กรุณาใส่ BOT_TOKEN ของคุณก่อนรันบอท")
     else:
