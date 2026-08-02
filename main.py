@@ -145,101 +145,6 @@ async def on_member_remove(member: discord.Member):
 
 
 # ==========================================
-# 🧧 ระบบซื้อยศ VIP ด้วยซองอั่งเปา (Angpao VIP Shop) - Persistent View
-# ==========================================
-class AngpaoModal(discord.ui.Modal, title="🧧 แจ้งสลิปซองอั่งเปา TrueMoney"):
-    link_input = discord.ui.TextInput(
-        label="ลิงก์ซองอั่งเปา TrueMoney (Gift Link)",
-        style=discord.TextStyle.short,
-        placeholder="https://gift.truemoney.com/campaign/?v=...",
-        required=True,
-        max_length=150
-    )
-
-    def __init__(self):
-        super().__init__()
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        link = self.link_input.value.strip()
-        user = interaction.user
-        
-        embed = interaction.message.embeds[0]
-        role_info = "ไม่พบข้อมูลยศ"
-        for field in embed.fields:
-            if "ยศ" in field.name:
-                role_info = field.value
-
-        admin_embed = discord.Embed(
-            title="🧧 มีคำสั่งซื้อยศ VIP (ซองอั่งเปา) ใหม่!",
-            description=(
-                f"👤 **ผู้ซื้อ:** {user.mention} (`{user.name}`)\n"
-                f"🆔 **User ID:** `{user.id}`\n"
-                f"🔗 **ลิงก์ซองอั่งเปา:** `{link}`\n\n"
-                f"🏷️ **ยศที่เลือกซื้อ:**\n{role_info}"
-            ),
-            color=0x2ecc71
-        )
-        admin_embed.set_footer(text="Aegis Bot / Shop — Angpao System")
-
-        await interaction.channel.send(embed=admin_embed)
-        await interaction.followup.send("✅ ส่งข้อมูลลิงก์ซองอั่งเปาให้ระบบ/แอดมินตรวจสอบเรียบร้อยแล้ว กรุณารอแอดมินตรวจสอบครับ!", ephemeral=True)
-
-
-class BuyVipAngpaoView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(label="🧧 เติมเงินซองอั่งเปาเพื่อรับยศ", style=discord.ButtonStyle.secondary, emoji="💸", custom_id="aegis_buy_vip_angpao:persistent_button")
-    async def open_angpao_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
-        modal = AngpaoModal()
-        await interaction.response.send_modal(modal)
-
-
-@bot.tree.command(name="buy_vip_angpao", description="ซื้อยศ VIP ด้วยซองอั่งเปา TrueMoney (เลือกยศได้สูงสุด 4 ยศ)")
-@app_commands.describe(
-    yศที่_1="เลือกยศหลักที่ต้องการรับ",
-    yศที่_2="เลือกยศเสริมที่ 2 (ไม่บังคับ)",
-    yศที่_3="เลือกยศเสริมที่ 3 (ไม่บังคับ)",
-    yศที่_4="เลือกยศเสริมที่ 4 (ไม่บังคับ)"
-)
-async def buy_vip_angpao_command(
-    interaction: discord.Interaction, 
-    yศที่_1: discord.Role, 
-    yศที่_2: discord.Role = None, 
-    yศที่_3: discord.Role = None, 
-    yศที่_4: discord.Role = None
-):
-    selected_roles = [yศที่_1]
-    if yศที่_2: selected_roles.append(yศที่_2)
-    if yศที่_3: selected_roles.append(yศที่_3)
-    if yศที่_4: selected_roles.append(yศที่_4)
-
-    role_names_str = "\n".join([f"• <@&{role.id}>" for role in selected_roles])
-
-    embed = discord.Embed(
-        title="🧧 AEGIS SHOP — ซื้อยศ VIP ด้วยซองอั่งเปา",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📥 **วิธีชำระเงิน:**\n"
-            "1. สร้างซองของขวัญ TrueMoney\n"
-            "2. กดปุ่ม **'เติมเงินซองอั่งเปาเพื่อรับยศ'** สีเทาด้านล่าง\n"
-            "3. วางลิงก์ซองอั่งเปาในช่องกรอกข้อมูลแล้วกดส่ง\n"
-            "4. รอแอดมินตรวจสอบเพื่อรับยศ\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        ),
-        color=0x7f8c8d
-    )
-    embed.add_field(name="🛒 ยศที่คุณเลือกซื้อ:", value=role_names_str, inline=False)
-    embed.set_image(url="https://i.pinimg.com/1200x/a1/24/6e/a1246ecbb25c304e276e03e9181326dd.jpg")
-    embed.set_footer(text="AEGIS BOT / SHOP — ANGPAO VIP SYSTEM")
-
-    view = BuyVipAngpaoView()
-    await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message("✅ สร้างหน้าต่างซื้อยศ VIP ด้วยซองอั่งเปาเรียบร้อยแล้วครับ", ephemeral=True)
-
-
-# ==========================================
 # 🟩 ระบบรับยศทั่วไป (เลือกยศผ่านคำสั่ง /setup_roles)
 # ==========================================
 class GeneralRoleView(discord.ui.View):
@@ -315,7 +220,6 @@ async def on_ready():
     bot.add_view(TranslateView())
     bot.add_view(TokenCheckerView())
     bot.add_view(SaveRestoreRoleView())
-    bot.add_view(BuyVipAngpaoView()) # <-- โหลด View ซองอั่งเปาแบบถาวร
     
     server_count = len(bot.guilds)
     print(f"Logged in as {bot.user.name} (Aegis Bot System)")
