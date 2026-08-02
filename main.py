@@ -197,7 +197,8 @@ class BuyVipAngpaoView(discord.ui.View):
         super().__init__(timeout=None)
         self.role_ids = role_ids
 
-    @discord.ui.button(label="🧧 เติมเงินซองอั่งเปาเพื่อรับยศ", style=discord.ButtonStyle.success, emoji="💸", custom_id="aegis_buy_vip_angpao:button")
+    # ปุ่มเช็กตัง/เติมเงิน (ปรับเป็นสีเทา Secondary)
+    @discord.ui.button(label="🧧 เติมเงินซองอั่งเปาเพื่อรับยศ", style=discord.ButtonStyle.secondary, emoji="💸", custom_id="aegis_buy_vip_angpao:button")
     async def open_angpao_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
         modal = AngpaoModal(self.role_ids)
         await interaction.response.send_modal(modal)
@@ -232,14 +233,14 @@ async def buy_vip_angpao_command(
             f"🛒 **ยศที่คุณเลือกซื้อ:**\n{role_names_str}\n\n"
             "📥 **วิธีชำระเงิน:**\n"
             "1. สร้างซองของขวัญ TrueMoney (แบบจำนวนเงินเท่ากัน หรือสุ่มตามราคาแพ็กเกจ)\n"
-            "2. กดปุ่ม **'เติมเงินซองอั่งเปาเพื่อรับยศ'** สีเขียวด้านล่าง\n"
+            "2. กดปุ่ม **'เติมเงินซองอั่งเปาเพื่อรับยศ'** สีเทาด้านล่าง\n"
             "3. วางลิงก์ซองอั่งเปาในช่องกรอกข้อมูลแล้วกดส่ง\n"
             "4. รอระบบตรวจสอบและรับยศอัตโนมัติ/จากแอดมิน\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0x7f8c8d  # โทนสีเทา
     )
-    # อัปเดตลิงก์รูปภาพใหม่ล่าสุดตามที่คุณต้องการ
+    # อัปเดตลิงก์รูปภาพล่าสุด
     embed.set_image(url="https://i.pinimg.com/1200x/a1/24/6e/a1246ecbb25c304e276e03e9181326dd.jpg")
     embed.set_footer(text="AEGIS BOT / SHOP — ANGPAO VIP SYSTEM")
 
@@ -256,7 +257,8 @@ class GeneralRoleView(discord.ui.View):
         super().__init__(timeout=None)
         self.role_id = role_id
 
-    @discord.ui.button(label="【 ☁️ กดเพื่อรับ/คืนยศ 】", style=discord.ButtonStyle.success, emoji="🟢", custom_id="general_role_button:dynamic")
+    # ปุ่มเลือกยศทั่วไป (ปรับเป็นสีฟ้า Primary)
+    @discord.ui.button(label="【 ☁️ กดเพื่อรับ/คืนยศ 】", style=discord.ButtonStyle.primary, emoji="🔵", custom_id="general_role_button:dynamic")
     async def toggle_role(self, interaction: discord.Interaction, button: discord.ui.Button):
         role = interaction.guild.get_role(self.role_id)
         
@@ -283,8 +285,8 @@ async def setup_roles_command(interaction: discord.Interaction, role: discord.Ro
         title="💬 Aegis Bot / Shop — ระบบรับยศทั่วไป",
         description=(
             ".•° 💧 𝓐𝓮𝓰𝓲𝓼 💧 °•.\n\n"
-            f"🟢 : กดปุ่มด้านล่างเพื่อรับยศ **{role.name}**\n"
-            "🟢 : กดปุ่มซ้ำ เพื่อคืนยศ\n\n"
+            f"🔵 : กดปุ่มด้านล่างเพื่อรับยศ **{role.name}**\n"
+            "🔵 : กดปุ่มซ้ำ เพื่อคืนยศ\n\n"
             ".•° 💧 𝓐𝓮𝓰𝓲𝓼 💧 °•."
         ),
         color=0x2b2d31
