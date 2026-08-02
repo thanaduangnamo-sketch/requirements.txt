@@ -114,9 +114,9 @@ class SaveRestoreRoleView(discord.ui.View):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-@bot.tree.command(name="setup_saveroles", description="สร้างระบบปุ่มกดเซฟและคืนยศอัตโนมัติ")
-@app_commands.describe(image_url="ใส่ลิงก์รูปภาพแบนเนอร์ (ไม่บังคับ)")
-async def setup_saveroles_command(interaction: discord.Interaction, image_url: str = "https://i.pinimg.com/736x/14/68/59/146859926bd33323535af3b8697b024d.jpg"):
+@bot.tree.command(name="เซฟยศ", description="สร้างระบบปุ่มกดเซฟและคืนยศอัตโนมัติ")
+@app_commands.describe(ลิงก์รูปภาพ="ใส่ลิงก์รูปภาพแบนเนอร์ (ไม่บังคับ)")
+async def setup_saveroles_command(interaction: discord.Interaction, ลิงก์รูปภาพ: str = "https://i.pinimg.com/736x/14/68/59/146859926bd33323535af3b8697b024d.jpg"):
     embed = discord.Embed(
         title="🛡️ ระบบเซฟและคืนยศ",
         description=(
@@ -128,7 +128,7 @@ async def setup_saveroles_command(interaction: discord.Interaction, image_url: s
         ),
         color=0xf1c40f
     )
-    embed.set_image(url=image_url)
+    embed.set_image(url=ลิงก์รูปภาพ)
     embed.set_footer(text="Aegis Bot / Shop — Role Saver System")
 
     view = SaveRestoreRoleView()
@@ -145,7 +145,7 @@ async def on_member_remove(member: discord.Member):
 
 
 # ==========================================
-# 🟩 ระบบรับยศทั่วไป (เลือกยศผ่านคำสั่ง /setup_roles)
+# 🟩 ระบบรับยศทั่วไป (เลือกยศผ่านคำสั่ง /รับยศ)
 # ==========================================
 class GeneralRoleView(discord.ui.View):
     def __init__(self, role_id: int):
@@ -169,31 +169,31 @@ class GeneralRoleView(discord.ui.View):
             await interaction.response.send_message(f"✅ คุณได้รับยศ **{role.name}** เรียบร้อยแล้วครับ!", ephemeral=True)
 
 
-@bot.tree.command(name="setup_roles", description="สร้างระบบรับยศปุ่มกด โดยเลือกยศที่ต้องการได้ทันที")
+@bot.tree.command(name="รับยศ", description="สร้างระบบรับยศปุ่มกด โดยเลือกยศที่ต้องการได้ทันที")
 @app_commands.describe(
-    role="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับเมื่อกดปุ่ม",
-    image_url="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)"
+    เลือกยศ="เลือกยศที่ต้องการให้ผู้ใช้งานได้รับเมื่อกดปุ่ม",
+    ลิงก์รูปภาพ="ใส่ลิงก์รูปภาพแบนเนอร์ด้านใน Embed (ไม่บังคับ)"
 )
-async def setup_roles_command(interaction: discord.Interaction, role: discord.Role, image_url: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
+async def setup_roles_command(interaction: discord.Interaction, เลือกยศ: discord.Role, ลิงก์รูปภาพ: str = "https://i.pinimg.com/736x/de/f8/80/def8807c89475990941ba4617b4cbc2e.jpg"):
     embed = discord.Embed(
         title="💬 Aegis Bot / Shop — ระบบรับยศทั่วไป",
         description=(
             ".•° 💧 𝓐𝓮𝓰𝓲𝓼 💧 °•.\n\n"
-            f"🔵 : กดปุ่มด้านล่างเพื่อรับยศ **{role.name}**\n"
+            f"🔵 : กดปุ่มด้านล่างเพื่อรับยศ **{เลือกยศ.name}**\n"
             "🔵 : กดปุ่มซ้ำ เพื่อคืนยศ\n\n"
             ".•° 💧 𝓐𝓮𝓰𝓲𝓼 💧 °•."
         ),
         color=0x2b2d31
     )
     
-    if image_url:
-        embed.set_image(url=image_url)
+    if ลิงก์รูปภาพ:
+        embed.set_image(url=ลิงก์รูปภาพ)
         
     embed.set_footer(text="© AEGIS BOT / SHOP")
 
-    view = GeneralRoleView(role.id)
+    view = GeneralRoleView(เลือกยศ.id)
     await interaction.channel.send(embed=embed, view=view)
-    await interaction.response.send_message(f"✅ สร้างหน้าต่างระบบรับยศ (**{role.name}**) เรียบร้อยแล้วครับ", ephemeral=True)
+    await interaction.response.send_message(f"✅ สร้างหน้าต่างระบบรับยศ (**{เลือกยศ.name}**) เรียบร้อยแล้วครับ", ephemeral=True)
 
 
 # --- ระบบลูปเปลี่ยนสถานะทุกๆ 1 นาที ---
@@ -326,7 +326,7 @@ class TranslateView(discord.ui.View):
         await interaction.response.send_modal(TranslateModal())
 
 
-@bot.tree.command(name="translate", description="เปิดหน้าต่างระบบแปลภาษา Aegis")
+@bot.tree.command(name="แปลภาษา", description="เปิดหน้าต่างระบบแปลภาษา Aegis")
 async def translate_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🌐 AEGIS — TRANSLATE SYSTEM",
@@ -446,7 +446,7 @@ class TokenCheckerView(discord.ui.View):
         await interaction.response.send_modal(TokenModal())
 
 
-@bot.tree.command(name="checktoken", description="เปิดหน้าต่างตรวจสอบ Discord Token (ส่งผลลัพธ์เข้า DM)")
+@bot.tree.command(name="เช็คโทเค็น", description="เปิดหน้าต่างตรวจสอบ Discord Token (ส่งผลลัพธ์เข้า DM)")
 async def checktoken_command(interaction: discord.Interaction):
     embed = discord.Embed(
         title="AEGIS — TOKEN CHECKER",
@@ -535,8 +535,8 @@ class CloseTicketView(discord.ui.View):
 
 
 @bot.tree.command(name="ติดต่อแอดมิน", description="สร้างระบบติดต่อแอดมิน / แจ้งปัญหา (Ticket)")
-@app_commands.describe(image="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)", image_url="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)")
-async def ticket_command(interaction: discord.Interaction, image: discord.Attachment = None, image_url: str = None):
+@app_commands.describe(รูปภาพ="อัปโหลดรูปภาพประกอบ (ไม่บังคับ)", ลิงก์รูปภาพ="หรือใส่ลิงก์รูปภาพ URL (ไม่บังคับ)")
+async def ticket_command(interaction: discord.Interaction, รูปภาพ: discord.Attachment = None, ลิงก์รูปภาพ: str = None):
     embed = discord.Embed(
         title="Aegis Bot / Shop — ติดต่อแอดมิน/แจ้งปัญหา",
         description=(
@@ -547,7 +547,7 @@ async def ticket_command(interaction: discord.Interaction, image: discord.Attach
         color=0xf1c40f
     )
 
-    target_image = image.url if image else (image_url if image_url else None)
+    target_image = รูปภาพ.url if รูปภาพ else (ลิงก์รูปภาพ if ลิงก์รูปภาพ else None)
     if target_image:
         embed.set_image(url=target_image)
 
