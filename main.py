@@ -153,6 +153,102 @@ async def on_member_remove(member: discord.Member):
 
 
 # ==========================================
+# 🧧 ระบบซื้อยศ VIP ด้วยซองอั่งเปา (Angpao VIP Shop)
+# ==========================================
+class AngpaoModal(discord.ui.Modal, title="🧧 แจ้งสลิปซองอั่งเปา TrueMoney"):
+    link_input = discord.ui.TextInput(
+        label="ลิงก์ซองอั่งเปา TrueMoney (Gift Link)",
+        style=discord.TextStyle.short,
+        placeholder="https://gift.truemoney.com/campaign/?v=...",
+        required=True,
+        max_length=150
+    )
+
+    def __init__(self, role_ids: list):
+        super().__init__()
+        self.role_ids = role_ids
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        link = self.link_input.value.strip()
+        user = interaction.user
+        guild = interaction.guild
+
+        # ส่งข้อมูลซองและผู้ซื้อไปให้แอดมินตรวจสอบ
+        embed = discord.Embed(
+            title="🧧 มีคำสั่งซื้อยศ VIP (ซองอั่งเปา) ใหม่!",
+            description=(
+                f"👤 **ผู้ซื้อ:** {user.mention} (`{user.name}`)\n"
+                f"🆔 **User ID:** `{user.id}`\n"
+                f"🔗 **ลิงก์ซองอั่งเปา:** `{link}`\n\n"
+                f"🏷️ **ยศที่เลือกซื้อ:**\n" + 
+                "\n".join([f"• <@&{r_id}>" for r_id in self.role_ids if guild.get_role(r_id)])
+            ),
+            color=0x2ecc71
+        )
+        embed.set_footer(text="Aegis Bot / Shop — Angpao System")
+
+        await interaction.channel.send(embed=embed)
+        await interaction.followup.send("✅ ส่งข้อมูลลิงก์ซองอั่งเปาให้ระบบ/แอดมินตรวจสอบเรียบร้อยแล้ว กรุณารอแอดมินตรวจสอบและกดยืนยันครับ!", ephemeral=True)
+
+
+class BuyVipAngpaoView(discord.ui.View):
+    def __init__(self, role_ids: list):
+        super().__init__(timeout=None)
+        self.role_ids = role_ids
+
+    @discord.ui.button(label="🧧 เติมเงินซองอั่งเปาเพื่อรับยศ", style=discord.ButtonStyle.success, emoji="💸", custom_id="aegis_buy_vip_angpao:button")
+    async def open_angpao_modal(self, interaction: discord.Interaction, button: discord.ui.Button):
+        modal = AngpaoModal(self.role_ids)
+        await interaction.response.send_modal(modal)
+
+
+@bot.tree.command(name="buy_vip_angpao", description="ซื้อยศ VIP ด้วยซองอั่งเปา TrueMoney (เลือกยศได้สูงสุด 4 ยศ)")
+@app_commands.describe(
+    yศที่_1="เลือกยศหลักที่ต้องการรับ",
+    yศที่_2="เลือกยศเสริมที่ 2 (ไม่บังคับ)",
+    yศที่_3="เลือกยศเสริมที่ 3 (ไม่บังคับ)",
+    yศที่_4="เลือกยศเสริมที่ 4 (ไม่บังคับ)"
+)
+async def buy_vip_angpao_command(
+    interaction: discord.Interaction, 
+    yศที่_1: discord.Role, 
+    yศที่_2: discord.Role = None, 
+    yศที่_3: discord.Role = None, 
+    yศที่_4: discord.Role = None
+):
+    selected_roles = [yศที่_1]
+    if yศที่_2: selected_roles.append(yศที่_2)
+    if yศที่_3: selected_roles.append(yศที่_3)
+    if yศที่_4: selected_roles.append(yศที่_4)
+
+    role_ids = [role.id for role in selected_roles]
+    role_names_str = ", ".join([f"**{role.name}**" for role in selected_roles])
+
+    embed = discord.Embed(
+        title="🧧 AEGIS SHOP — ซื้อยศ VIP ด้วยซองอั่งเปา",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🛒 **ยศที่คุณเลือกซื้อ:**\n{role_names_str}\n\n"
+            "📥 **วิธีชำระเงิน:**\n"
+            "1. สร้างซองของขวัญ TrueMoney (แบบจำนวนเงินเท่ากัน หรือสุ่มตามราคาแพ็กเกจ)\n"
+            "2. กดปุ่ม **'เติมเงินซองอั่งเปาเพื่อรับยศ'** สีเขียวด้านล่าง\n"
+            "3. วางลิงก์ซองอั่งเปาในช่องกรอกข้อมูลแล้วกดส่ง\n"
+            "4. รอระบบตรวจสอบและรับยศอัตโนมัติ/จากแอดมิน\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=0x7f8c8d  # โทนสีเทา
+    )
+    # อัปเดตลิงก์รูปภาพใหม่ตามที่คุณต้องการ
+    embed.set_image(url="https://i.pinimg.com/236x/69/38/a8/6938a8608a33e27135a2d612d785641e.jpg")
+    embed.set_footer(text="AEGIS BOT / SHOP — ANGPAO VIP SYSTEM")
+
+    view = BuyVipAngpaoView(role_ids)
+    await interaction.channel.send(embed=embed, view=view)
+    await interaction.response.send_message("✅ สร้างหน้าต่างซื้อยศ VIP ด้วยซองอั่งเปาเรียบร้อยแล้วครับ", ephemeral=True)
+
+
+# ==========================================
 # 🟩 ระบบรับยศทั่วไป (เลือกยศผ่านคำสั่ง /setup_roles)
 # ==========================================
 class GeneralRoleView(discord.ui.View):
