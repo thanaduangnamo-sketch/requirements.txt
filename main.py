@@ -10,7 +10,7 @@ from flask import Flask
 from threading import Thread
 
 # ==========================================
-# 🌐 ระบบจำลองเว็บพอร์ต ป้องกัน Render ตัดการเชื่อมต่อ (Timeout)
+# 🌐 ระบบจำลองเว็บพอร์ต ป้องกัน Render ตัดการเชื่อมต่อ
 # ==========================================
 app = Flask('')
 
@@ -32,9 +32,8 @@ def keep_alive():
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ⚙️ ตั้งค่า ID ยศและห้อง Log ตรงนี้ได้เลย
-ROLE_ID = 1532610300992557186        # ไอดี ยศที่จะให้หลังยืนยันสำเร็จ (จำเป็น)
-LOG_CHANNEL_ID = None               # ไอดี ห้องส่ง Log แจ้งเตือน (ใส่ตัวเลข หรือปล่อยเป็น None ถ้าไม่ใช้)
+ROLE_ID = 1326066039481565225        # ไอดี ยศที่จะให้หลังยืนยันสำเร็จ
+LOG_CHANNEL_ID = None               # ไอดี ห้องส่ง Log แจ้งเตือน
 
 TOKEN = os.environ.get("DISCORD_TOKEN", "ใส่ Token ของบอทในนี้")
 
@@ -43,7 +42,6 @@ TOKEN = os.environ.get("DISCORD_TOKEN", "ใส่ Token ของบอทใ�
 async def on_ready():
     print(f"BOT LOGIN: {bot.user}")
     try:
-        # ซิงค์ Slash Command ให้แสดงผลบน Discord ทันที
         await bot.tree.sync()
         print("Slash commands synced successfully.")
     except Exception as e:
@@ -63,6 +61,8 @@ class VerifyButton(View):
         if role and role in interaction.user.roles:
             return await interaction.response.send_message("ℹ️ คุณได้ทำการยืนยันตัวตนไปแล้วเรียบร้อยครับ", ephemeral=True)
         
+        # 🟢 แจ้ง Discord ว่ากำลังประมวลผล ป้องกันขึ้นแถบแดง 24/7 ไม่ตอบสนอง
+        await interaction.response.defer(ephemeral=True)
         await generate_captcha(interaction)
         
     @discord.ui.button(label="👨‍💻 Terms of dev", style=discord.ButtonStyle.secondary, custom_id="verify_dev_new", row=3)
@@ -95,7 +95,7 @@ class VerifyButton(View):
 
 
 # ==========================================
-# 🖼️ ฟังก์ชันสร้างรูปภาพ Captcha
+# 🖼️ ฟังก์ชันสร้างรูปภาพ Captcha (ใช้ followups สำหรับ deferred interaction)
 # ==========================================
 async def generate_captcha(interaction: discord.Interaction):
     captcha_text = "".join(str(random.randint(0, 9)) for _ in range(4))
@@ -112,7 +112,8 @@ async def generate_captcha(interaction: discord.Interaction):
     embed.set_image(url="attachment://captcha.png")
 
     view = CaptchaButtons(captcha_text)
-    await interaction.response.send_message(embed=embed, file=file, view=view, ephemeral=True)
+    # ใช้ followpool เพราะเรา defer ไว้ตั้งแต่ตอนกดปุ่ม
+    await interaction.followup.send(embed=embed, file=file, view=view, ephemeral=True)
 
 
 # ==========================================
