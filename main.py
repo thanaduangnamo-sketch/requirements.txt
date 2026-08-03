@@ -33,7 +33,7 @@ intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ⚙️ ตั้งค่า ID ยศและห้อง Log ตรงนี้ได้เลย
-ROLE_ID = 1326066039481565225        # ไอดี ยศที่จะให้หลังยืนยันสำเร็จ (จำเป็น)
+ROLE_ID = 1532610300992557186        # ไอดี ยศที่จะให้หลังยืนยันสำเร็จ (จำเป็น)
 LOG_CHANNEL_ID = None               # ไอดี ห้องส่ง Log แจ้งเตือน (ใส่ตัวเลข หรือปล่อยเป็น None ถ้าไม่ใช้)
 
 TOKEN = os.environ.get("DISCORD_TOKEN", "ใส่ Token ของบอทในนี้")
