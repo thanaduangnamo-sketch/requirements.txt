@@ -22,6 +22,12 @@ TOKEN = os.environ.get("DISCORD_TOKEN", "ใส่ Token ของบอทใ�
 @bot.event
 async def on_ready():
     print(f"BOT LOGIN: {bot.user}")
+    try:
+        # ซิงค์ Slash Command ให้แสดงผลบน Discord ทันที
+        await bot.tree.sync()
+        print("Slash commands synced successfully.")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
 
 
 # ==========================================
@@ -144,7 +150,6 @@ class NumberButton(Button):
                         embed.color = discord.Color.green()
                         await interaction.edit_original_message(embed=embed)
 
-                        # ตรวจสอบว่ามีการตั้งค่าห้อง Log ไว้หรือไม่
                         if LOG_CHANNEL_ID is not None:
                             log_channel = bot.get_channel(LOG_CHANNEL_ID)
                             if log_channel:
@@ -170,17 +175,17 @@ class NumberButton(Button):
 
 
 # ==========================================
-# 💬 คำสั่งเรียกใช้งาน (Command: !vfy)
+# 💬 คำสั่ง Slash Command: /vfy
 # ==========================================
-@bot.command()
-async def vfy(ctx):
+@bot.tree.command(name="vfy", description="ส่งแผงควบคุมระบบยืนยันตัวตน (Captcha)")
+async def vfy(interaction: discord.Interaction):
     embed = discord.Embed(
         title="**🎄 | Verifications System**", 
         description=">>> - กดปุ่ม **ยืนยันตัวตน** ด้านล่างเพื่อเริ่มทำ Captcha\n - สงสัยวิธีทำ กดปุ่ม **วิธียืนยันตัวตน**", 
         color=discord.Color.blue()
     )
     embed.set_image(url="https://i.pinimg.com/originals/29/49/e0/2949e0262e42def248f1c77c571bf9ab.gif")
-    await ctx.send(embed=embed, view=VerifyButton())
+    await interaction.response.send_message(embed=embed, view=VerifyButton())
 
 
 # ==========================================
