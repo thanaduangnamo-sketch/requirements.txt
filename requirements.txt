@@ -1,3 +1,2 @@
-nextcord==2.6.0
+discord.py
 captcha
-setuptools
