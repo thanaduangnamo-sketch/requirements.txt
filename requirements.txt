@@ -2,4 +2,3 @@ nextcord==2.6.0
 captcha
 flask
 aiohttp
-python-3.11.9
