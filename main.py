@@ -6,13 +6,33 @@ import random
 import io
 import asyncio
 import os
+from flask import Flask
+from threading import Thread
 
+# ==========================================
+# 🌐 ระบบจำลองเว็บพอร์ต ป้องกัน Render ตัดการเชื่อมต่อ (Timeout)
+# ==========================================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def run_web():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+
+
+# ==========================================
+# 🤖 ตั้งค่าบอท Discord
+# ==========================================
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ==========================================
 # ⚙️ ตั้งค่า ID ยศและห้อง Log ตรงนี้ได้เลย
-# ==========================================
 ROLE_ID = 1326066039481565225        # ไอดี ยศที่จะให้หลังยืนยันสำเร็จ (จำเป็น)
 LOG_CHANNEL_ID = None               # ไอดี ห้องส่ง Log แจ้งเตือน (ใส่ตัวเลข หรือปล่อยเป็น None ถ้าไม่ใช้)
 
@@ -189,7 +209,8 @@ async def vfy(interaction: discord.Interaction):
 
 
 # ==========================================
-# 🚀 รันบอท
+# 🚀 รันบอทและเว็บเซิร์ฟเวอร์
 # ==========================================
 if __name__ == "__main__":
+    keep_alive()
     bot.run(TOKEN)
