@@ -1,6 +1,7 @@
 import sys
-# 🛡️ บรรทัดนี้ป้องกันไม่ให้ nextcord ไปเรียกใช้ audioop บน Python เวอร์ชันใหม่ (Render)
-sys.modules['audioop'] = None
+from unittest.mock import MagicMock
+# 🛡️ สร้างตู้หลอกสำหรับ audioop เพื่อป้องกัน Error บน Python 3.14
+sys.modules['audioop'] = MagicMock()
 
 import nextcord
 from nextcord.ext import commands
@@ -37,7 +38,6 @@ class VerifyButton(View):
 
     @nextcord.ui.button(label="ยืนยันตัวตน", emoji="<:kb_members:1222593151449960549>", style=nextcord.ButtonStyle.secondary, custom_id="verify_start_new", row=1)
     async def verify(self, button: Button, interaction: nextcord.Interaction):
-        # ตรวจสอบว่าผู้ใช้มีรึยัง
         role = interaction.guild.get_role(ROLE_ID)
         if role and role in interaction.user.roles:
             return await interaction.response.send_message("ℹ️ คุณได้ทำการยืนยันตัวตนไปแล้วเรียบร้อยครับ", ephemeral=True)
@@ -118,10 +118,8 @@ class NumberButton(Button):
         embed = interaction.message.embeds[0]
         embed.description = f">>> **🔢 โค้ดที่คุณป้อน:** ```{self.parent_view.user_input}```\n\nกรุณากดตัวเลขให้ครบ 4 ตัว"
 
-        # เมื่อกดครบ 4 ตัว
         if len(self.parent_view.user_input) >= 4:
             if self.parent_view.user_input == self.parent_view.captcha_text:
-                # ⏳ เอฟเฟกต์นับถอยหลัง 3 วินาทีก่อนให้ยศ
                 embed.description = ">>> ⏳ **กำลังตรวจสอบคำตอบ...**\n**3...**"
                 await interaction.response.edit_message(embed=embed, view=None)
 
@@ -132,13 +130,11 @@ class NumberButton(Button):
                 
                 await asyncio.sleep(1)
 
-                # ให้ยศและบันทึกผล
                 role = interaction.guild.get_role(ROLE_ID)
                 if role:
                     try:
                         await interaction.user.add_roles(role)
                         
-                        # ส่ง DM หาผู้ใช้ส่วนตัว
                         try:
                             dm_embed = nextcord.Embed(
                                 title="🎉 ยืนยันตัวตนสำเร็จ!",
@@ -147,14 +143,12 @@ class NumberButton(Button):
                             )
                             await interaction.user.send(embed=dm_embed)
                         except:
-                            pass # ป้องกันกรณีผู้ใช้ปิดรับ DM
+                            pass 
 
-                        # อัปเดตข้อความในแชทปุ่มกด
                         embed.description = ">>> ✅ **ยืนยันตัวตนสำเร็จ! ตรวจสอบผลลัพธ์ทาง DM ได้เลย**"
                         embed.color = nextcord.Color.green()
                         await interaction.edit_original_message(embed=embed)
 
-                        # ส่ง Log ไปยังห้องที่ตั้งค่าไว้
                         if LOG_CHANNEL_ID:
                             log_channel = bot.get_channel(LOG_CHANNEL_ID)
                             if log_channel:
@@ -169,7 +163,6 @@ class NumberButton(Button):
                         embed.color = nextcord.Color.red()
                         await interaction.edit_original_message(embed=embed)
             else:
-                # ❌ กรณีผู้ใช้กรอกผิด
                 embed.description = "> ❌ **ตัวเลขไม่ถูกต้อง! โปรดกดปุ่มยืนยันตัวตนใหม่อีกครั้ง**"
                 embed.color = nextcord.Color.red()
                 self.parent_view.clear_items()
