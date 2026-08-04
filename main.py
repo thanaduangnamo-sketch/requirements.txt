@@ -6,6 +6,11 @@ from flask import Flask
 from threading import Thread
 
 # ==========================================
+# ⚙️ ตั้งค่าไอดีโรลยศที่ต้องการเซฟ/คืน
+# ==========================================
+ROLE_ID_TO_SAVE = 1326066039481565225  # <-- เปลี่ยนเป็น ID ยศของคุณที่นี่
+
+# ==========================================
 # 🌐 ระบบเว็บเซิร์ฟเวอร์ผูกพอร์ต Render
 # ==========================================
 app = Flask('')
@@ -43,7 +48,7 @@ async def on_ready():
 
 
 # ==========================================
-# 💾 แผงควบคุมระบบ SaveRoles System (พร้อมแก้ปัญหาปุ่มไม่ตอบสนอง)
+# 💾 แผงควบคุมระบบ SaveRoles System (ระบบแท็กยศดิสคอร์ด)
 # ==========================================
 class SaveRolesView(View):
     def __init__(self):
@@ -51,17 +56,35 @@ class SaveRolesView(View):
 
     @discord.ui.button(label="เซฟยศ", emoji="✅", style=discord.ButtonStyle.primary, custom_id="saveroles_save", row=1)
     async def save_roles(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("✅ บันทึกข้อมูล (เซฟยศ) ของคุณเรียบร้อยแล้ว!", ephemeral=True)
+        role = interaction.guild.get_role(ROLE_ID_TO_SAVE)
+        if not role:
+            return await interaction.response.send_message("❌ ไม่พบยศที่กำหนดในระบบ โปรดตรวจสอบ ID ยศอีกครั้ง", ephemeral=True)
+
+        if role in interaction.user.roles:
+            await interaction.response.send_message(f"✅ บันทึกข้อมูลและเซฟยศ {role.mention} ของคุณเรียบร้อยแล้ว!", ephemeral=True)
+        else:
+            await interaction.response.send_message(f"⚠️ คุณยังไม่มี {role.mention} นี้ในตัว จึงไม่สามารถเซฟได้ครับ", ephemeral=True)
 
     @discord.ui.button(label="รับยศคืน", emoji="🔄", style=discord.ButtonStyle.success, custom_id="saveroles_restore", row=1)
     async def restore_roles(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.send_message("🔄 ดึงข้อมูลและทำการคืนยศให้คุณเรียบร้อยแล้ว!", ephemeral=True)
+        role = interaction.guild.get_role(ROLE_ID_TO_SAVE)
+        if not role:
+            return await interaction.response.send_message("❌ ไม่พบยศที่กำหนดในระบบ โปรดตรวจสอบ ID ยศอีกครั้ง", ephemeral=True)
+
+        try:
+            await interaction.user.add_roles(role)
+            await interaction.response.send_message(f"🔄 ดึงข้อมูลและทำการคืนยศ {role.mention} ให้คุณเรียบร้อยแล้ว!", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการคืนยศ: {e}", ephemeral=True)
 
     @discord.ui.button(label="ดูข้อมูลผู้ใช้", emoji="👤", style=discord.ButtonStyle.secondary, custom_id="saveroles_info", row=1)
     async def user_info(self, interaction: discord.Interaction, button: Button):
+        role = interaction.guild.get_role(ROLE_ID_TO_SAVE)
+        role_name = role.mention if role else "ไม่พบยศ"
+        
         embed = discord.Embed(
             title="👤 ข้อมูลการเซฟยศของคุณ",
-            description=f">>> **ผู้ใช้งาน:** {interaction.user.mention}\n- สถานะ: ปกติ\n- ยศที่บันทึกไว้: (ยังไม่มีข้อมูล)",
+            description=f">>> **ผู้ใช้งาน:** {interaction.user.mention}\n- สถานะ: ปกติ\n- ยศที่ผูกไว้: {role_name}",
             color=discord.Color.blurple()
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
