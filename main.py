@@ -6,7 +6,7 @@ from flask import Flask
 from threading import Thread
 
 # ==========================================
-# 🌐 ระบบเว็บเซิร์ฟเวอร์ผูกพอร์ต Render
+# 🌐 ระบบเว็บเซิร์ฟเวอร์ผูกพอร์ต Render (แก้ปัญหา Timeout และ Port Scan)
 # ==========================================
 app = Flask('')
 
@@ -15,7 +15,6 @@ def home():
     return "Bot is alive and running!"
 
 def run_web():
-    # ดึงพอร์ตจาก Render โดยตรง (ถ้าไม่มีให้ใช้ 8080)
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
