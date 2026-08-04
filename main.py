@@ -6,7 +6,7 @@ from flask import Flask
 from threading import Thread
 
 # ==========================================
-# 🌐 ระบบจำลองเว็บพอร์ต สำหรับ Web Service บน Render
+# 🌐 ระบบเว็บเซิร์ฟเวอร์ผูกพอร์ต Render
 # ==========================================
 app = Flask('')
 
@@ -15,7 +15,9 @@ def home():
     return "Bot is alive and running!"
 
 def run_web():
-    app.run(host='0.0.0.0', port=8080)
+    # ดึงพอร์ตจาก Render โดยตรง (ถ้าไม่มีให้ใช้ 8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
     t = Thread(target=run_web)
@@ -114,7 +116,7 @@ async def saveroles_prefix(ctx):
             "🟢 **คนมาเอายศคืน** 🟢\n"
             "```asciidoc\n"
             "+ ให้กดปุ่ม ( รับยศคืน ) เพื่อรับยศคืน\n"
-            "+ In กรณีดิสบิน เผลอออกดิส หรือดิสหลุด หรืออยากออกเข้าใหม่\n"
+            "+ ในกรณีดิสบิน เผลอออกดิส หรือดิสหลุด หรืออยากออกเข้าใหม่\n"
             "```\n\n"
             "⚠️ **ข้อความจากแอดมิน** ⚠️\n"
             "```diff\n"
