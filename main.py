@@ -2,25 +2,6 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Button
 import os
-from flask import Flask
-from threading import Thread
-
-# ==========================================
-# 🌐 ระบบจำลองเว็บพอร์ต ป้องกัน Render ตัดการเชื่อมต่อ
-# ==========================================
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is alive and running!"
-
-def run_web():
-    app.run(host='0.0.0.0', port=8080)
-
-def keep_alive():
-    t = Thread(target=run_web)
-    t.start()
-
 
 # ==========================================
 # 🤖 ตั้งค่าบอท Discord
@@ -95,7 +76,6 @@ async def saveroles_slash(interaction: discord.Interaction):
         ),
         color=discord.Color.from_rgb(40, 42, 54)
     )
-    # ใส่ลิงก์ GIF ตามที่คุณต้องการ
     embed.set_image(url="https://media.discordapp.net/attachments/1168490971990851645/1168892040562610278/standard.gif?ex=6a72864b&is=6a7134cb&hm=d305063fd143d3c83dda97b9ada40666a7a91df4e1d99193b474fb132d2d1d5b&")
     
     await interaction.response.send_message(embed=embed, view=SaveRolesView())
@@ -131,8 +111,7 @@ async def saveroles_prefix(ctx):
 
 
 # ==========================================
-# 🚀 รันบอทและเว็บเซิร์ฟเวอร์
+# 🚀 รันบอท
 # ==========================================
 if __name__ == "__main__":
-    keep_alive()
     bot.run(TOKEN)
