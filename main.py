@@ -6,7 +6,7 @@ from flask import Flask
 from threading import Thread
 
 # ==========================================
-# 🌐 ระบบเว็บเซิร์ฟเวอร์ผูกพอร์ต Render (แก้ปัญหา Timeout และ Port Scan)
+# 🌐 ระบบเว็บเซิร์ฟเวอร์ผูกพอร์ต Render
 # ==========================================
 app = Flask('')
 
@@ -43,22 +43,22 @@ async def on_ready():
 
 
 # ==========================================
-# 💾 แผงควบคุมระบบ SaveRoles System
+# 💾 แผงควบคุมระบบ SaveRoles System (พร้อมแก้ปัญหาปุ่มไม่ตอบสนอง)
 # ==========================================
 class SaveRolesView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="เซฟยศ", emoji="✅", style=discord.ButtonStyle.primary, custom_id="saveroles_save", row=1)
-    async def save_roles(self, button: Button, interaction: discord.Interaction):
+    async def save_roles(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("✅ บันทึกข้อมูล (เซฟยศ) ของคุณเรียบร้อยแล้ว!", ephemeral=True)
 
     @discord.ui.button(label="รับยศคืน", emoji="🔄", style=discord.ButtonStyle.success, custom_id="saveroles_restore", row=1)
-    async def restore_roles(self, button: Button, interaction: discord.Interaction):
+    async def restore_roles(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("🔄 ดึงข้อมูลและทำการคืนยศให้คุณเรียบร้อยแล้ว!", ephemeral=True)
 
     @discord.ui.button(label="ดูข้อมูลผู้ใช้", emoji="👤", style=discord.ButtonStyle.secondary, custom_id="saveroles_info", row=1)
-    async def user_info(self, button: Button, interaction: discord.Interaction):
+    async def user_info(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(
             title="👤 ข้อมูลการเซฟยศของคุณ",
             description=f">>> **ผู้ใช้งาน:** {interaction.user.mention}\n- สถานะ: ปกติ\n- ยศที่บันทึกไว้: (ยังไม่มีข้อมูล)",
@@ -67,7 +67,7 @@ class SaveRolesView(View):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="รีวิว", emoji="⭐", style=discord.ButtonStyle.danger, custom_id="saveroles_review", row=1)
-    async def review_system(self, button: Button, interaction: discord.Interaction):
+    async def review_system(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("⭐ ขอบคุณที่สนใจรีวิวระบบของเรา! สามารถพิมพ์ข้อความรีวิวได้เลยครับ", ephemeral=True)
 
 
