@@ -2,6 +2,25 @@ import discord
 from discord.ext import commands
 from discord.ui import View, Button
 import os
+from flask import Flask
+from threading import Thread
+
+# ==========================================
+# 🌐 ระบบจำลองเว็บพอร์ต สำหรับ Web Service บน Render
+# ==========================================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def run_web():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+
 
 # ==========================================
 # 🤖 ตั้งค่าบอท Discord
@@ -95,7 +114,7 @@ async def saveroles_prefix(ctx):
             "🟢 **คนมาเอายศคืน** 🟢\n"
             "```asciidoc\n"
             "+ ให้กดปุ่ม ( รับยศคืน ) เพื่อรับยศคืน\n"
-            "+ ในกรณีดิสบิน เผลอออกดิส หรือดิสหลุด หรืออยากออกเข้าใหม่\n"
+            "+ In กรณีดิสบิน เผลอออกดิส หรือดิสหลุด หรืออยากออกเข้าใหม่\n"
             "```\n\n"
             "⚠️ **ข้อความจากแอดมิน** ⚠️\n"
             "```diff\n"
@@ -111,7 +130,8 @@ async def saveroles_prefix(ctx):
 
 
 # ==========================================
-# 🚀 รันบอท
+# 🚀 รันบอทและเว็บเซิร์ฟเวอร์
 # ==========================================
 if __name__ == "__main__":
+    keep_alive()
     bot.run(TOKEN)
