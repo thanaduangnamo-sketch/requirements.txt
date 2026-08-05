@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button
+from discord.ui import View, Button, Select, SelectMenu
 import os
 from flask import Flask
 from threading import Thread
@@ -46,7 +46,7 @@ async def on_ready():
 
 
 # ==========================================
-# 💾 แผงควบคุมระบบ SaveRoles System (บันทึกทุกยศ)
+# 💾 1. ระบบ SaveRoles View
 # ==========================================
 class SaveRolesView(View):
     def __init__(self):
@@ -55,7 +55,6 @@ class SaveRolesView(View):
     @discord.ui.button(label="เซฟยศ", emoji="✅", style=discord.ButtonStyle.primary, custom_id="saveroles_save", row=1)
     async def save_roles(self, interaction: discord.Interaction, button: Button):
         user = interaction.user
-        # กรองเอาเฉพาะยศที่มีอยู่จริง และไม่ใช่ @everyone หรือยศ Managed (ยศบอท/บูสต์)
         roles_to_save = [role.id for role in user.roles if not role.is_default() and not role.managed]
 
         if not roles_to_save:
@@ -63,7 +62,6 @@ class SaveRolesView(View):
 
         saved_user_roles[user.id] = roles_to_save
         
-        # ดึงชื่อยศมาแสดงแบบแท็ก
         role_mentions = ", ".join([f"<@&{r_id}>" for r_id in roles_to_save])
         await interaction.response.send_message(f"✅ บันทึกข้อมูลและเซฟยศทั้งหมดของคุณเรียบร้อยแล้ว!\n📌 **ยศที่บันทึกไว้:** {role_mentions}", ephemeral=True)
 
@@ -75,7 +73,6 @@ class SaveRolesView(View):
 
         role_ids = saved_user_roles[user.id]
         roles_to_add = []
-        failed_roles = []
 
         for r_id in role_ids:
             role = interaction.guild.get_role(r_id)
@@ -117,8 +114,78 @@ class SaveRolesView(View):
 
 
 # ==========================================
-# 💬 คำสั่ง Slash Command และ Prefix Command: /saveroles และ !saveroles
+# 🎫 2. ระบบ Tickets View (เปิดตั๋ว / ปิดตั๋ว)
 # ==========================================
+class TicketCloseView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="ปิดตั๋ว", emoji="🔒", style=discord.ButtonStyle.danger, custom_id="ticket_close")
+    async def close_ticket(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.send_message("🔒 กำลังปิดห้องตั๋วนี้ใน 5 วินาที...", ephemeral=False)
+        import asyncio
+        await asyncio.sleep(5)
+        try:
+            await interaction.channel.delete()
+        except:
+            pass
+
+
+class TicketSelect(Select):
+    def __init__(self):
+        options = [
+            discord.SelectOption(label="ติดต่อแอดมินทั่วไป", description="สอบถามปัญหาทั่วไปหรือพูดคุยกับแอดมิน", emoji="💬"),
+            discord.SelectOption(label="แจ้งปัญหาบอท/ระบบ", description="แจ้งบัค แจ้งปัญหาการใช้งานระบบ", emoji="🛠️"),
+            discord.SelectOption(label="ติดต่อซื้อสินค้า/เติมเงิน", description="สอบถามเรื่องสินค้าและบริการ", emoji="🛒"),
+        ]
+        super().__init__(placeholder="📌 กรุณาเลือกหัวข้อที่ต้องการติดต่อ...", min_values=1, max_values=1, options=options, custom_id="ticket_dropdown")
+
+    async def callback(self, interaction: discord.Interaction):
+        guild = interaction.guild
+        member = interaction.user
+        
+        # ค้นหาหมวดหมู่สำหรับตั๋ว (ถ้ามีห้องชื่อ Tickets หรือสร้างใหม่)
+        category = discord.utils.get(guild.categories, name="🎫 | TICKETS")
+        if not category:
+            category = await guild.create_category("🎫 | TICKETS")
+
+        # ตั้งค่าสิทธิ์เข้าถึงห้องเฉพาะแอดมินและตัวผู้ใช้เอง
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
+        }
+
+        # สร้างชื่อห้องตั๋ว
+        channel_name = f"ticket-{member.name}"
+        existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
+        if existing_channel:
+            return await interaction.response.send_message(f"❌ คุณมีห้องตั๋วเปิดอยู่แล้วที่ {existing_channel.mention}", ephemeral=True)
+
+        ticket_channel = await guild.create_text_channel(name=channel_name, category=category, overwrites=overwrites)
+        
+        embed = discord.Embed(
+            title=f"🎫 ห้องตั๋วของคุณ: {self.values[0]}",
+            description=f"สวัสดีครับคุณ {member.mention}\n- **หัวข้อ:** {self.values[0]}\n- โปรดพิมพ์รายละเอียดปัญหาของคุณไว้ได้เลย แอดมินจะรีบเข้ามาช่วยเหลือโดยเร็วที่สุดครับ",
+            color=discord.Color.green()
+        )
+        
+        view = TicketCloseView()
+        await ticket_channel.send(content=f"{member.mention} @here", embed=embed, view=view)
+        await interaction.response.send_message(f"✅ เปิดห้องตั๋วให้คุณแล้วที่ {ticket_channel.mention}", ephemeral=True)
+
+
+class TicketView(View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.add_item(TicketSelect())
+
+
+# ==========================================
+# 💬 คำสั่ง Slash Commands และ Prefix Commands
+# ==========================================
+
+# คำสั่ง /saveroles
 @bot.tree.command(name="saveroles", description="ส่งแผงควบคุมระบบ SaveRoles System (เซฟยศ/คืนยศ)")
 async def saveroles_slash(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -173,6 +240,30 @@ async def saveroles_prefix(ctx):
     
     await ctx.message.delete()
     await ctx.send(embed=embed, view=SaveRolesView())
+
+
+# คำสั่ง /ticket (สำหรับส่งแผงเปิดตั๋ว)
+@bot.tree.command(name="ticket", description="ส่งแผงควบคุมระบบ Tickets (ติดต่อแอดมิน/แจ้งปัญหา)")
+@app.default_permissions(administrator=True)
+async def ticket_slash(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🎫 ระบบเปิดตั๋ว / Tickets Support",
+        description="> หากต้องการติดต่อแอดมิน แจ้งปัญหา หรือสอบถามข้อมูลเพิ่มเติม\n> สามารถเลือกหัวข้อจากเมสด้านล่างนี้เพื่อเปิดห้องส่วนตัวได้ทันทีครับ!",
+        color=discord.Color.blurple()
+    )
+    await interaction.response.send_message(embed=embed, view=TicketView())
+
+
+@bot.command(name="ticket")
+@commands.has_permissions(administrator=True)
+async def ticket_prefix(ctx):
+    embed = discord.Embed(
+        title="🎫 ระบบเปิดตั๋ว / Tickets Support",
+        description="> หากต้องการติดต่อแอดมิน แจ้งปัญหา หรือสอบถามข้อมูลเพิ่มเติม\n> สามารถเลือกหัวข้อจากเมสด้านล่างนี้เพื่อเปิดห้องส่วนตัวได้ทันทีครับ!",
+        color=discord.Color.blurple()
+    )
+    await ctx.message.delete()
+    await ctx.send(embed=embed, view=TicketView())
 
 
 # ==========================================
