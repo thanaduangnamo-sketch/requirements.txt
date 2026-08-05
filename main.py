@@ -241,8 +241,11 @@ async def saveroles_prefix(ctx):
 
 # คำสั่ง /ticket (สำหรับส่งแผงเปิดตั๋ว)
 @bot.tree.command(name="ticket", description="ส่งแผงควบคุมระบบ Tickets (ติดต่อแอดมิน/แจ้งปัญหา)")
-@app.default_permissions(administrator=True)
 async def ticket_slash(interaction: discord.Interaction):
+    # ตรวจสอบสิทธิ์แอดมินเฉพาะในคำสั่ง
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (ต้องเป็นแอดมิน)", ephemeral=True)
+
     embed = discord.Embed(
         title="🎫 ระบบเปิดตั๋ว / Tickets Support",
         description="> หากต้องการติดต่อแอดมิน แจ้งปัญหา หรือสอบถามข้อมูลเพิ่มเติม\n> สามารถเลือกหัวข้อจากเมสด้านล่างนี้เพื่อเปิดห้องส่วนตัวได้ทันทีครับ!",
