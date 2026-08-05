@@ -38,6 +38,11 @@ saved_user_roles = {}
 @bot.event
 async def on_ready():
     print(f"BOT LOGIN: {bot.user}")
+    
+    # ลงทะเบียน View ถาวรเพื่อให้ปุ่มกดได้ตลอดเวลาแม้บอทจะรีสตาร์ท
+    bot.add_view(SaveRolesView())
+    bot.add_view(TicketPersistentView())
+
     try:
         await bot.tree.sync()
         print("Slash commands synced successfully.")
@@ -46,13 +51,13 @@ async def on_ready():
 
 
 # ==========================================
-# 💾 1. ระบบ SaveRoles View
+# 💾 1. ระบบ SaveRoles View (ปุ่มกดได้ตลอด)
 # ==========================================
 class SaveRolesView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="เซฟยศ", emoji="✅", style=discord.ButtonStyle.primary, custom_id="saveroles_save", row=1)
+    @discord.ui.button(label="เซฟยศ", emoji="✅", style=discord.ButtonStyle.primary, custom_id="saveroles_save_persistent", row=1)
     async def save_roles(self, interaction: discord.Interaction, button: Button):
         user = interaction.user
         roles_to_save = [role.id for role in user.roles if not role.is_default() and not role.managed]
@@ -65,7 +70,7 @@ class SaveRolesView(View):
         role_mentions = ", ".join([f"<@&{r_id}>" for r_id in roles_to_save])
         await interaction.response.send_message(f"✅ บันทึกข้อมูลและเซฟยศทั้งหมดของคุณเรียบร้อยแล้ว!\n📌 **ยศที่บันทึกไว้:** {role_mentions}", ephemeral=True)
 
-    @discord.ui.button(label="รับยศคืน", emoji="🔄", style=discord.ButtonStyle.success, custom_id="saveroles_restore", row=1)
+    @discord.ui.button(label="รับยศคืน", emoji="🔄", style=discord.ButtonStyle.success, custom_id="saveroles_restore_persistent", row=1)
     async def restore_roles(self, interaction: discord.Interaction, button: Button):
         user = interaction.user
         if user.id not in saved_user_roles or not saved_user_roles[user.id]:
@@ -89,7 +94,7 @@ class SaveRolesView(View):
         except Exception as e:
             await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการคืนยศ (บอทอาจไม่มีสิทธิ์จัดการยศเหล่านี้): {e}", ephemeral=True)
 
-    @discord.ui.button(label="ดูข้อมูลผู้ใช้", emoji="👤", style=discord.ButtonStyle.secondary, custom_id="saveroles_info", row=1)
+    @discord.ui.button(label="ดูข้อมูลผู้ใช้", emoji="👤", style=discord.ButtonStyle.secondary, custom_id="saveroles_info_persistent", row=1)
     async def user_info(self, interaction: discord.Interaction, button: Button):
         user = interaction.user
         role_ids = saved_user_roles.get(user.id, [])
@@ -108,19 +113,19 @@ class SaveRolesView(View):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="รีวิว", emoji="⭐", style=discord.ButtonStyle.danger, custom_id="saveroles_review", row=1)
+    @discord.ui.button(label="รีวิว", emoji="⭐", style=discord.ButtonStyle.danger, custom_id="saveroles_review_persistent", row=1)
     async def review_system(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("⭐ ขอบคุณที่สนใจรีวิวระบบของเรา! สามารถพิมพ์ข้อความรีวิวได้เลยครับ", ephemeral=True)
 
 
 # ==========================================
-# 🎫 2. ระบบ Tickets View (เปิดตั๋ว / ปิดตั๋ว)
+# 🎫 2. ระบบ Tickets View (ปุ่มกดได้ตลอด)
 # ==========================================
 class TicketCloseView(View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="ปิดตั๋ว", emoji="🔒", style=discord.ButtonStyle.danger, custom_id="ticket_close")
+    @discord.ui.button(label="ปิดตั๋ว", emoji="🔒", style=discord.ButtonStyle.danger, custom_id="ticket_close_persistent")
     async def close_ticket(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_message("🔒 กำลังปิดห้องตั๋วนี้ใน 5 วินาที...", ephemeral=False)
         import asyncio
@@ -138,7 +143,7 @@ class TicketSelect(Select):
             discord.SelectOption(label="แจ้งปัญหาบอท/ระบบ", description="แจ้งบัค แจ้งปัญหาการใช้งานระบบ", emoji="🛠️"),
             discord.SelectOption(label="ติดต่อซื้อสินค้า/เติมเงิน", description="สอบถามเรื่องสินค้าและบริการ", emoji="🛒"),
         ]
-        super().__init__(placeholder="📌 กรุณาเลือกหัวข้อที่ต้องการติดต่อ...", min_values=1, max_values=1, options=options, custom_id="ticket_dropdown")
+        super().__init__(placeholder="📌 กรุณาเลือกหัวข้อที่ต้องการติดต่อ...", min_values=1, max_values=1, options=options, custom_id="ticket_dropdown_persistent")
 
     async def callback(self, interaction: discord.Interaction):
         guild = interaction.guild
@@ -172,7 +177,7 @@ class TicketSelect(Select):
         await interaction.response.send_message(f"✅ เปิดห้องตั๋วให้คุณแล้วที่ {ticket_channel.mention}", ephemeral=True)
 
 
-class TicketView(View):
+class TicketPersistentView(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.add_item(TicketSelect())
@@ -242,7 +247,6 @@ async def saveroles_prefix(ctx):
 # คำสั่ง /ticket (สำหรับส่งแผงเปิดตั๋ว)
 @bot.tree.command(name="ticket", description="ส่งแผงควบคุมระบบ Tickets (ติดต่อแอดมิน/แจ้งปัญหา)")
 async def ticket_slash(interaction: discord.Interaction):
-    # ตรวจสอบสิทธิ์แอดมินเฉพาะในคำสั่ง
     if not interaction.user.guild_permissions.administrator:
         return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้งานคำสั่งนี้ (ต้องเป็นแอดมิน)", ephemeral=True)
 
@@ -251,7 +255,7 @@ async def ticket_slash(interaction: discord.Interaction):
         description="> หากต้องการติดต่อแอดมิน แจ้งปัญหา หรือสอบถามข้อมูลเพิ่มเติม\n> สามารถเลือกหัวข้อจากเมสด้านล่างนี้เพื่อเปิดห้องส่วนตัวได้ทันทีครับ!",
         color=discord.Color.blurple()
     )
-    await interaction.response.send_message(embed=embed, view=TicketView())
+    await interaction.response.send_message(embed=embed, view=TicketPersistentView())
 
 
 @bot.command(name="ticket")
@@ -263,7 +267,7 @@ async def ticket_prefix(ctx):
         color=discord.Color.blurple()
     )
     await ctx.message.delete()
-    await ctx.send(embed=embed, view=TicketView())
+    await ctx.send(embed=embed, view=TicketPersistentView())
 
 
 # ==========================================
