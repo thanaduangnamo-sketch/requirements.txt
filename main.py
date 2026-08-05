@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from discord.ui import View, Button, Select, SelectMenu
+from discord.ui import View, Button, Select
 import os
 from flask import Flask
 from threading import Thread
@@ -144,19 +144,16 @@ class TicketSelect(Select):
         guild = interaction.guild
         member = interaction.user
         
-        # ค้นหาหมวดหมู่สำหรับตั๋ว (ถ้ามีห้องชื่อ Tickets หรือสร้างใหม่)
         category = discord.utils.get(guild.categories, name="🎫 | TICKETS")
         if not category:
             category = await guild.create_category("🎫 | TICKETS")
 
-        # ตั้งค่าสิทธิ์เข้าถึงห้องเฉพาะแอดมินและตัวผู้ใช้เอง
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             member: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
-        # สร้างชื่อห้องตั๋ว
         channel_name = f"ticket-{member.name}"
         existing_channel = discord.utils.get(guild.text_channels, name=channel_name)
         if existing_channel:
