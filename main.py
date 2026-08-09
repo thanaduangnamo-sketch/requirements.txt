@@ -43,11 +43,10 @@ async def on_ready():
             print(f"❌ Failed to auto-connect to voice channel: {e}")
 
 # ---------------------------------------------------------
-# ระบบ Slash Command: /ticket (ดีไซน์ตามรูปตัวอย่าง)
+# ระบบ Slash Command: /ticket พร้อมรูปจาก Pinterest
 # ---------------------------------------------------------
 @bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋ว Ticket สำหรับสมาชิกทุกคน")
 async def ticket(interaction: discord.Interaction):
-    # ฟังก์ชันเมื่อมีคนกดปุ่ม OPEN TICKET
     async def button_callback(button_interaction: discord.Interaction):
         guild = button_interaction.guild
         user = button_interaction.user
@@ -84,14 +83,17 @@ async def ticket(interaction: discord.Interaction):
         except Exception as e:
             await button_interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
 
-    # สร้างปุ่ม OPEN TICKET สีม่วง (Blurple) พร้อมไอคอนตั๋ว 🎫
+    # ปุ่ม OPEN TICKET สีม่วง (Blurple)
     button = discord.ui.Button(label="OPEN TICKET", emoji="🎫", style=discord.ButtonStyle.blurple)
     button.callback = button_callback
     
     view = discord.ui.View()
     view.add_item(button)
 
-    # สร้าง Embed ดีไซน์ตามภาพตัวอย่าง
+    # รูปภาพจาก Pinterest ที่คุณส่งมา
+    pinterest_image_url = "https://i.pinimg.com/736x/99/30/e8/9930e86245884b97783ae63e9d5162fc.jpg"
+
+    # สร้าง Embed ดีไซน์พร้อมใส่รูปจาก Pinterest
     embed = discord.Embed(
         title="Help & Support\nTicket System",
         description=(
@@ -102,14 +104,12 @@ async def ticket(interaction: discord.Interaction):
             "ไม่ต้องเป็นห่วงเรื่องความปลอดภัย เพราะปลอดภัยแน่นอน "
             "ไม่มีหลุด ข้อมูลส่วนตัวของลูกค้าปลอดภัยหายห่วง💯!!"
         ),
-        color=0xFEE75C # สีเหลืองทองแถบข้างตามรูป
+        color=0xFEE75C # สีเหลืองทองแถบข้าง
     )
-    # ใส่รูปภาพขนาดเล็กมุมขวาบน (Thumbnail) และรูปภาพใหญ่ตรงกลาง (Image) ตามแบบในรูป
-    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500") # รูปตัวอย่างมุมขวาบน
-    embed.set_image(url="https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=500")    # รูปแบนเนอร์ตรงกลาง
+    embed.set_thumbnail(url=pinterest_image_url) # รูปขวาบน
+    embed.set_image(url=pinterest_image_url)     # รูปแบนเนอร์ใหญ่ตรงกลาง
     embed.set_footer(text="Powered by Ticket System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
-    # ส่งข้อความออกไปในห้องแชทให้ทุกคนเห็น
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
 TOKEN = os.environ.get("DISCORD_TOKEN")
