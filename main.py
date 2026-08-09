@@ -22,7 +22,6 @@ class VoiceBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # ซิงค์ Slash Commands กับ Discord
         await self.tree.sync()
         print("Slash commands synced.")
 
@@ -33,19 +32,15 @@ async def on_ready():
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
     print('Bot is ready!')
 
-# ----------------- สร้าง Slash Command แบบกดเลือกห้อง -----------------
 @bot.tree.command(name="join", description="เลือกช่องเสียงเพื่อให้บอทเข้าไปสิง")
 @app_commands.describe(channel="เลือกห้องเสียงที่ต้องการให้บอทเข้าไป")
 async def join(interaction: discord.Interaction, channel: discord.VoiceChannel):
-    # ตรวจสอบว่าบอทอยู่ในห้องเสียงอื่นอยู่แล้วหรือไม่
     voice_client = interaction.guild.voice_client
-
     try:
         if voice_client:
             await voice_client.move_to(channel)
         else:
             await channel.connect()
-        
         await interaction.response.send_message(f'✅ บอทเข้ามาที่ห้องเสียง **{channel.name}** เรียบร้อยแล้ว!', ephemeral=False)
     except Exception as e:
         await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
@@ -59,7 +54,7 @@ async def leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# ฟังก์ชันรันบอท Discord แยก Thread
+# ฟังก์ชันรันบอท
 def run_bot():
     TOKEN = os.environ.get("DISCORD_TOKEN")
     if TOKEN:
@@ -67,6 +62,9 @@ def run_bot():
     else:
         print("Error: Please set DISCORD_TOKEN in environment variables.")
 
-if __name__ == "__main__":
-    bot_thread = threading.Thread(target=run_bot)
+# เริ่มต้นรันบอทใน Background Thread ทันทีที่ Gunicorn โหลดไฟล์นี้
+# (ใช้ตัวแปรเช็คเพื่อให้รันแค่ครั้งเดียว ป้องกันปัญหารันซ้ำซ้อนใน Gunicorn Worker)
+if not hasattr(app, "bot_started"):
+    app.bot_started = True
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
     bot_thread.start()
