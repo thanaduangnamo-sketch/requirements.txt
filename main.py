@@ -22,13 +22,53 @@ intents.guilds = True
 intents.voice_states = True
 intents.message_content = True
 
+# สร้างคลาสสำหรับจัดการปุ่มแบบถาวร (Persistent View) เพื่อให้ปุ่มเก่าไม่พังเวลาอัปเดตโค้ด
+class TicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None) # timeout=None ทำให้ปุ่มกดได้ตลอดไปไม่มีวันหมดอายุ
+
+    @discord.ui.button(label="OPEN TICKET", emoji="🎫", style=discord.ButtonStyle.blurple, custom_id="persistent_ticket_button_id")
+    async def ticket_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        user = interaction.user
+        channel_name = f"ticket-{user.name}"
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
+        }
+
+        admin_role = discord.utils.get(guild.roles, name="Admin") 
+        if admin_role:
+            overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+
+        try:
+            ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+            
+            await interaction.response.send_message(
+                f'🔒 สร้างห้องส่วนตัวให้คุณเรียบร้อยแล้ว! ไปพูดคุยต่อได้ที่: {ticket_channel.mention}', 
+                ephemeral=True
+            )
+
+            ping_text = admin_role.mention if admin_role else "@here"
+            await ticket_channel.send(
+                f"👋 สวัสดีครับ {user.mention}\n"
+                f"นี่คือห้องตั๋วส่วนตัวของคุณ มีปัญหาอะไรแจ้งไว้ได้เลยครับ!\n"
+                f"🔔 แจ้งเตือนทีมงาน: {ping_text}"
+            )
+        except Exception as e:
+            await interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
+
 class VoiceBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
+        # ลงทะเบียน Persistent View ล่วงหน้าเพื่อให้บอทจดจำปุ่มเก่าในแชทได้ทันทีที่เปิดเครื่อง
+        self.add_view(TicketView())
         await self.tree.sync()
-        print("🚀 Slash commands synced successfully.")
+        print("🚀 Slash commands synced and Persistent View loaded successfully.")
 
 bot = VoiceBot()
 
@@ -43,7 +83,7 @@ async def on_ready():
     )
     print("⚪ Bot status set to Invisible (Gray Dot).")
 
-    # ระบบเข้าห้องเสียงอัตโนมัติ (ดึง ID จาก Environment Variable: VOICE_CHANNEL_ID)
+    # ระบบเข้าห้องเสียงอัตโนมัติ
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
     if channel_id_str:
         try:
@@ -56,9 +96,7 @@ async def on_ready():
         except Exception as e:
             print(f"❌ Failed to auto-connect to voice channel: {e}")
 
-# ---------------------------------------------------------
-# คำสั่งที่ 1: /join (ดึงบอทเข้าห้องเสียง)
-# ---------------------------------------------------------
+# คำสั่ง /join
 @bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
 async def join(interaction: discord.Interaction):
     if interaction.user.voice and interaction.user.voice.channel:
@@ -75,9 +113,7 @@ async def join(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
 
-# ---------------------------------------------------------
-# คำสั่งที่ 2: /leave (ให้บอทออกจากห้องเสียง)
-# ---------------------------------------------------------
+# คำสั่ง /leave
 @bot.tree.command(name="leave", description="👋 สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
 async def leave(interaction: discord.Interaction):
     voice_client = interaction.guild.voice_client
@@ -87,48 +123,10 @@ async def leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# ---------------------------------------------------------
-# คำสั่งที่ 3: /ticket (ส่งข้อความปุ่มเปิดตั๋ว + รูป Pinterest)
-# ---------------------------------------------------------
+# คำสั่ง /ticket
 @bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋ว Ticket สำหรับสมาชิกทุกคน")
 async def ticket(interaction: discord.Interaction):
-    async def button_callback(button_interaction: discord.Interaction):
-        guild = button_interaction.guild
-        user = button_interaction.user
-        channel_name = f"ticket-{user.name}"
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
-        }
-
-        admin_role = discord.utils.get(guild.roles, name="Admin") 
-        if admin_role:
-            overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
-
-        try:
-            ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
-            
-            await button_interaction.response.send_message(
-                f'🔒 สร้างห้องส่วนตัวให้คุณเรียบร้อยแล้ว! ไปพูดคุยต่อได้ที่: {ticket_channel.mention}', 
-                ephemeral=True
-            )
-
-            ping_text = admin_role.mention if admin_role else "@here"
-            await ticket_channel.send(
-                f"👋 สวัสดีครับ {user.mention}\n"
-                f"นี่คือห้องตั๋วส่วนตัวของคุณ มีปัญหาอะไรแจ้งไว้ได้เลยครับ!\n"
-                f"🔔 แจ้งเตือนทีมงาน: {ping_text}"
-            )
-        except Exception as e:
-            await button_interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
-
-    button = discord.ui.Button(label="OPEN TICKET", emoji="🎫", style=discord.ButtonStyle.blurple)
-    button.callback = button_callback
-    view = discord.ui.View()
-    view.add_item(button)
-
+    view = TicketView()
     pinterest_image_url = "https://i.pinimg.com/736x/99/30/e8/9930e86245884b97783ae63e9d5162fc.jpg"
     
     embed = discord.Embed(
