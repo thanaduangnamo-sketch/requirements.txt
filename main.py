@@ -36,12 +36,12 @@ bot = VoiceBot()
 async def on_ready():
     print(f'✅ Logged in as {bot.user.name} (ID: {bot.user.id})')
     
-    # กำหนดจุดสีสถานะของบอทให้เป็นสีเหลือง (Idle) ค้างไว้ตลอดเวลา
+    # กำหนดจุดสีสถานะของบอทให้เป็นสีเทา (Invisible) ค้างไว้ตลอดเวลา
     await bot.change_presence(
-        status=discord.Status.idle, 
+        status=discord.Status.invisible, 
         activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Ticket 24 ชม.")
     )
-    print("🟡 Bot status set to Idle (Yellow Dot).")
+    print("⚪ Bot status set to Invisible (Gray Dot).")
 
     # ระบบเข้าห้องเสียงอัตโนมัติ (ดึง ID จาก Environment Variable: VOICE_CHANNEL_ID)
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
@@ -97,20 +97,17 @@ async def ticket(interaction: discord.Interaction):
         user = button_interaction.user
         channel_name = f"ticket-{user.name}"
 
-        # ตั้งค่าสิทธิ์ (เห็นเฉพาะตัวผู้ใช้, แอดมิน, และบอท)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
-        # ค้นหายศแอดมิน (เปลี่ยนคำว่า "Admin" เป็นชื่อยศจริงในเซิร์ฟเวอร์ของคุณ)
         admin_role = discord.utils.get(guild.roles, name="Admin") 
         if admin_role:
             overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
 
         try:
-            # สร้างห้องแชทส่วนตัว
             ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
             
             await button_interaction.response.send_message(
@@ -118,7 +115,6 @@ async def ticket(interaction: discord.Interaction):
                 ephemeral=True
             )
 
-            # แท็กแอดมินในห้องส่วนตัว
             ping_text = admin_role.mention if admin_role else "@here"
             await ticket_channel.send(
                 f"👋 สวัสดีครับ {user.mention}\n"
@@ -128,13 +124,11 @@ async def ticket(interaction: discord.Interaction):
         except Exception as e:
             await button_interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
 
-    # ปุ่ม OPEN TICKET สีม่วง
     button = discord.ui.Button(label="OPEN TICKET", emoji="🎫", style=discord.ButtonStyle.blurple)
     button.callback = button_callback
     view = discord.ui.View()
     view.add_item(button)
 
-    # รูปภาพจาก Pinterest
     pinterest_image_url = "https://i.pinimg.com/736x/99/30/e8/9930e86245884b97783ae63e9d5162fc.jpg"
     
     embed = discord.Embed(
