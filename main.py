@@ -1,9 +1,8 @@
 import os
 import threading
-import asyncio
 import discord
 from discord import app_commands
-from discord.ext import commands, tasks
+from discord.ext import commands
 from flask import Flask
 
 # ----------------- ส่วนของ Web Server (Flask) -----------------
@@ -29,27 +28,16 @@ class VoiceBot(commands.Bot):
 
 bot = VoiceBot()
 
-# ลูปสำหรับเปลี่ยนสีสถานะบอททุกๆ 1 นาที (วนไป: เขียว -> เหลือง -> แดง)
-@tasks.loop(minutes=1)
-async def change_bot_status():
-    statuses = [
-        (discord.Status.online, discord.Streaming(name="🟢 ออนไลน์ 24 ชม. | ฟังเพลง", url="https://www.twitch.tv/discord")),
-        (discord.Status.idle, discord.Streaming(name="🟡 สถานะว่าง | พักผ่อน", url="https://www.twitch.tv/discord")),
-        (discord.Status.do_not_disturb, discord.Streaming(name="🔴 ห้ามรบกวน | กำลังสตรีม", url="https://www.twitch.tv/discord"))
-    ]
-    
-    # วนลูปเปลี่ยนสถานะทีละแบบ
-    for status_type, activity in statuses:
-        await bot.change_presence(status=status_type, activity=activity)
-        await asyncio.sleep(20) # เปลี่ยนสถานะทุกๆ 20 วินาทีภายในลูป 1 นาทีเพื่อให้ครบรวดเร็ว หรือจะปรับตามชอบได้ครับ
-
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
     
-    # เริ่มต้นทำงานลูปเปลี่ยนสีสถานะ
-    if not change_bot_status.is_running():
-        change_bot_status.start()
+    # กำหนดจุดสีสถานะของบอทให้เป็นสีเหลือง (Idle) และใส่ข้อความกิจกรรม
+    await bot.change_presence(
+        status=discord.Status.idle, 
+        activity=discord.Game(name="🟡 บอทออนห้องเสียง 24 ชม.")
+    )
+    print("Bot status set to Idle (Yellow Dot).")
 
     # ระบบเข้าห้องเสียงอัตโนมัติ (ดึง ID จาก Environment Variable: VOICE_CHANNEL_ID)
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
@@ -64,7 +52,7 @@ async def on_ready():
         except Exception as e:
             print(f"Failed to auto-connect to voice channel: {e}")
 
-# คำสั่ง Slash Command: /join (เลือกห้องเสียงจากเมนูดรอปดาวน์ได้เองทันที)
+# คำสั่ง Slash Command: /join (เลือกช่องเสียงจากเมนูดรอปดาวน์ได้ตามต้องการ)
 @bot.tree.command(name="join", description="เลือกช่องเสียงเพื่อให้บอทเข้าไปสิง")
 @app_commands.describe(channel="เลือกห้องเสียงที่ต้องการให้บอทเข้าไป")
 async def join(interaction: discord.Interaction, channel: discord.VoiceChannel):
