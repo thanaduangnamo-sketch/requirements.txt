@@ -13,7 +13,6 @@ class VoiceBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # ซิงค์ Slash Commands ทั้งหมดให้แสดงบน Discord ทันที
         await self.tree.sync()
         print("🚀 Slash commands synced successfully.")
 
@@ -30,7 +29,7 @@ async def on_ready():
     )
     print("🟡 Bot status set to Idle (Yellow Dot).")
 
-    # ระบบเข้าห้องเสียงอัตโนมัติ (ดึง ID จาก Environment Variable: VOICE_CHANNEL_ID)
+    # ระบบเข้าห้องเสียงอัตโนมัติ
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
     if channel_id_str:
         try:
@@ -44,38 +43,11 @@ async def on_ready():
             print(f"❌ Failed to auto-connect to voice channel: {e}")
 
 # ---------------------------------------------------------
-# คำสั่ง Slash Commands (/join, /leave, /ticket)
+# ระบบ Slash Command: /ticket (ดีไซน์ตามรูปตัวอย่าง)
 # ---------------------------------------------------------
-
-@bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
-async def join(interaction: discord.Interaction):
-    if interaction.user.voice and interaction.user.voice.channel:
-        channel = interaction.user.voice.channel
-        voice_client = interaction.guild.voice_client
-        try:
-            if voice_client:
-                await voice_client.move_to(channel)
-            else:
-                await channel.connect()
-            await interaction.response.send_message(f'🎧 ดึงบอทเข้าห้อง **{channel.name}** สำเร็จ!', ephemeral=False)
-        except Exception as e:
-            await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
-    else:
-        await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
-
-@bot.tree.command(name="leave", description="👋 สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
-async def leave(interaction: discord.Interaction):
-    voice_client = interaction.guild.voice_client
-    if voice_client:
-        await voice_client.disconnect()
-        await interaction.response.send_message('👋 บอทออกจากห้องเสียงเรียบร้อยแล้ว', ephemeral=False)
-    else:
-        await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
-
-@bot.tree.command(name="ticket", description="🎫 สร้างปุ่มสำหรับเปิดตั๋วติดต่อทีมงานแบบห้องส่วนตัว")
+@bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋ว Ticket สำหรับสมาชิกทุกคน")
 async def ticket(interaction: discord.Interaction):
-    view = discord.ui.View()
-    
+    # ฟังก์ชันเมื่อมีคนกดปุ่ม OPEN TICKET
     async def button_callback(button_interaction: discord.Interaction):
         guild = button_interaction.guild
         user = button_interaction.user
@@ -112,16 +84,33 @@ async def ticket(interaction: discord.Interaction):
         except Exception as e:
             await button_interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
 
-    button = discord.ui.Button(label="🎫 กดเพื่อเปิดห้อง Ticket ส่วนตัว", style=discord.ButtonStyle.green)
+    # สร้างปุ่ม OPEN TICKET สีม่วง (Blurple) พร้อมไอคอนตั๋ว 🎫
+    button = discord.ui.Button(label="OPEN TICKET", emoji="🎫", style=discord.ButtonStyle.blurple)
     button.callback = button_callback
+    
+    view = discord.ui.View()
     view.add_item(button)
 
-    await interaction.response.send_message(
-        "✨ **ระบบเปิดตั๋วติดต่อทีมงาน (Ticket System)**\n"
-        "คลิกปุ่มด้านล่างนี้ ระบบจะสร้างห้องแชทส่วนตัวให้คุณและแท็กแอดมินให้อัตโนมัติครับ:", 
-        view=view, 
-        ephemeral=False
+    # สร้าง Embed ดีไซน์ตามภาพตัวอย่าง
+    embed = discord.Embed(
+        title="Help & Support\nTicket System",
+        description=(
+            "🎟️ สั่งซื้อสินค้า ติดต่อแอดมิน ติดต่องาน แจ้งปัญหา "
+            "ติดต่อสอบถาม ได้ที่ **Ticket Support 24 Hour**\n\n"
+            "⏰\n"
+            "Admin สต๊าฟรอ มีแอดมินบริการ ตรวจสอบทุกๆครั้ง "
+            "ไม่ต้องเป็นห่วงเรื่องความปลอดภัย เพราะปลอดภัยแน่นอน "
+            "ไม่มีหลุด ข้อมูลส่วนตัวของลูกค้าปลอดภัยหายห่วง💯!!"
+        ),
+        color=0xFEE75C # สีเหลืองทองแถบข้างตามรูป
     )
+    # ใส่รูปภาพขนาดเล็กมุมขวาบน (Thumbnail) และรูปภาพใหญ่ตรงกลาง (Image) ตามแบบในรูป
+    embed.set_thumbnail(url="https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500") # รูปตัวอย่างมุมขวาบน
+    embed.set_image(url="https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=500")    # รูปแบนเนอร์ตรงกลาง
+    embed.set_footer(text="Powered by Ticket System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+
+    # ส่งข้อความออกไปในห้องแชทให้ทุกคนเห็น
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
 TOKEN = os.environ.get("DISCORD_TOKEN")
 if TOKEN:
