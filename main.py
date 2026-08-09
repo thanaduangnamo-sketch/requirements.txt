@@ -1,6 +1,7 @@
 import os
 import threading
 import discord
+from discord import app_commands
 from discord.ext import commands
 from flask import Flask
 
@@ -13,52 +14,50 @@ def home():
 
 # ----------------- ส่วนของ Discord Bot -----------------
 intents = discord.Intents.default()
-intents.message_content = True
 intents.guilds = True
-intents.voice_states = True  # สำคัญสำหรับตรวจจับและใช้งานระบบเสียง
+intents.voice_states = True
 
-bot = commands.Bot(command_prefix='/', intents=intents)
+class VoiceBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix='!', intents=intents)
 
-# กำหนด ID ของช่องเสียงที่ต้องการให้บอทเข้าไปสิง (แทนที่ด้วย ID ช่องเสียงของคุณ)
-VOICE_CHANNEL_ID = int(os.environ.get("VOICE_CHANNEL_ID", "123456789012345678"))
+    async def setup_hook(self):
+        # ซิงค์ Slash Commands กับ Discord
+        await self.tree.sync()
+        print("Slash commands synced.")
+
+bot = VoiceBot()
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
-    
-    # สั่งให้บอทเข้าห้องเสียงทันทีที่เปิดระบบ
-    channel = bot.get_channel(VOICE_CHANNEL_ID)
-    if channel and isinstance(channel, discord.VoiceChannel):
-        try:
-            if not channel.guild.voice_client:
-                await channel.connect()
-                print(f"Connected to voice channel: {channel.name}")
-        except Exception as e:
-            print(f"Failed to connect to voice: {e}")
-    else:
-        print("Voice Channel ID not found or invalid.")
+    print('Bot is ready!')
 
-@bot.command()
-async def join(ctx):
-    """คำสั่งพิมพ์ /join เพื่อให้บอทตามเข้ามาในห้องเสียงที่คุณอยู่"""
-    if ctx.author.voice:
-        channel = ctx.author.voice.channel
-        if ctx.guild.voice_client:
-            await ctx.guild.voice_client.move_to(channel)
+# ----------------- สร้าง Slash Command แบบกดเลือกห้อง -----------------
+@bot.tree.command(name="join", description="เลือกช่องเสียงเพื่อให้บอทเข้าไปสิง")
+@app_commands.describe(channel="เลือกห้องเสียงที่ต้องการให้บอทเข้าไป")
+async def join(interaction: discord.Interaction, channel: discord.VoiceChannel):
+    # ตรวจสอบว่าบอทอยู่ในห้องเสียงอื่นอยู่แล้วหรือไม่
+    voice_client = interaction.guild.voice_client
+
+    try:
+        if voice_client:
+            await voice_client.move_to(channel)
         else:
             await channel.connect()
-        await ctx.send(f'เข้ามาในห้อง {channel.name} แล้ว!')
-    else:
-        await ctx.send('คุณต้องเข้าห้องเสียงก่อนใช้งานคำสั่งนี้!')
+        
+        await interaction.response.send_message(f'✅ บอทเข้ามาที่ห้องเสียง **{channel.name}** เรียบร้อยแล้ว!', ephemeral=False)
+    except Exception as e:
+        await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
 
-@bot.command()
-async def leave(ctx):
-    """คำสั่งพิมพ์ /leave ให้บอทออกจากห้องเสียง"""
-    if ctx.guild.voice_client:
-        await ctx.guild.voice_client.disconnect()
-        await ctx.send('ออกจากห้องเสียงแล้ว!')
+@bot.tree.command(name="leave", description="สั่งให้บอทออกจากห้องเสียง")
+async def leave(interaction: discord.Interaction):
+    voice_client = interaction.guild.voice_client
+    if voice_client:
+        await voice_client.disconnect()
+        await interaction.response.send_message('👋 บอทออกจากห้องเสียงแล้ว', ephemeral=False)
     else:
-        await ctx.send('บไม่ได้อยู่ในห้องเสียง!')
+        await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
 # ฟังก์ชันรันบอท Discord แยก Thread
 def run_bot():
