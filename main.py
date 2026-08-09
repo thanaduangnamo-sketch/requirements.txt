@@ -1,21 +1,7 @@
 import os
-import threading
 import discord
 from discord.ext import commands
-from flask import Flask
 
-# ---------------------------------------------------------
-# 1. ส่วนของ Web Server (Flask) สำหรับรันบน Render 24/7
-# ---------------------------------------------------------
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Voice Bot & Ticket System is running 24/7!"
-
-# ---------------------------------------------------------
-# 2. ส่วนของ Discord Bot (ใช้ Prefix เป็นเครื่องหมาย !)
-# ---------------------------------------------------------
 intents = discord.Intents.default()
 intents.guilds = True
 intents.voice_states = True
@@ -34,7 +20,7 @@ async def on_ready():
     )
     print("🟡 Bot status set to Idle (Yellow Dot).")
 
-    # ระบบเข้าห้องเสียงอัตโนมัติ (ดึง ID จาก Environment Variable: VOICE_CHANNEL_ID)
+    # ระบบเข้าห้องเสียงอัตโนมัติ
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
     if channel_id_str:
         try:
@@ -47,9 +33,7 @@ async def on_ready():
         except Exception as e:
             print(f"❌ Failed to auto-connect to voice channel: {e}")
 
-# ---------------------------------------------------------
-# 3. คำสั่ง: !join
-# ---------------------------------------------------------
+# คำสั่ง: !join
 @bot.command(name="join", help="ดึงบอทเข้าสู่ห้องเสียงที่คุณอยู่")
 async def join(ctx):
     if ctx.author.voice and ctx.author.voice.channel:
@@ -66,9 +50,7 @@ async def join(ctx):
     else:
         await ctx.send('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!')
 
-# ---------------------------------------------------------
-# 4. คำสั่ง: !leave
-# ---------------------------------------------------------
+# คำสั่ง: !leave
 @bot.command(name="leave", help="สั่งให้บอทออกจากห้องเสียง")
 async def leave(ctx):
     voice_client = ctx.guild.voice_client
@@ -78,9 +60,7 @@ async def leave(ctx):
     else:
         await ctx.send('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย')
 
-# ---------------------------------------------------------
-# 5. คำสั่ง: !ticket
-# ---------------------------------------------------------
+# คำสั่ง: !ticket
 @bot.command(name="ticket", help="สร้างปุ่มสำหรับเปิดตั๋วติดต่อทีมงานแบบห้องส่วนตัว")
 async def ticket(ctx):
     try:
@@ -95,20 +75,17 @@ async def ticket(ctx):
         user = button_interaction.user
         channel_name = f"ticket-{user.name}"
 
-        # ตั้งค่าสิทธิ์ (เห็นเฉพาะตัวผู้ใช้, แอดมิน, และบอท)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
-        # ค้นหายศแอดมิน (เปลี่ยนคำว่า "Admin" เป็นชื่อยศจริงในเซิร์ฟเวอร์ของคุณ)
         admin_role = discord.utils.get(guild.roles, name="Admin") 
         if admin_role:
             overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
 
         try:
-            # สร้างห้องแชทส่วนตัว
             ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
             
             await button_interaction.response.send_message(
@@ -116,7 +93,6 @@ async def ticket(ctx):
                 ephemeral=True
             )
 
-            # แท็กแอดมินในห้องส่วนตัว
             ping_text = admin_role.mention if admin_role else "@here"
             await ticket_channel.send(
                 f"👋 สวัสดีครับ {user.mention}\n"
@@ -136,18 +112,8 @@ async def ticket(ctx):
         view=view
     )
 
-# ---------------------------------------------------------
-# 6. ฟังก์ชันรันบอทคู่กับ Web Server (Background Thread)
-# ---------------------------------------------------------
-def run_bot():
-    TOKEN = os.environ.get("DISCORD_TOKEN")
-    if TOKEN:
-        bot.run(TOKEN)
-    else:
-        print("❌ Error: Please set DISCORD_TOKEN in environment variables.")
-
-if __name__ == "__main__":
-    if not hasattr(app, "bot_started"):
-        app.bot_started = True
-        bot_thread = threading.Thread(target=run_bot, daemon=True)
-        bot_thread.start()
+TOKEN = os.environ.get("DISCORD_TOKEN")
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ Error: Please set DISCORD_TOKEN in environment variables.")
