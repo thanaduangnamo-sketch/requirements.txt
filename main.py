@@ -1,8 +1,9 @@
 import os
 import threading
+import asyncio
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from flask import Flask
 
 # ----------------- ส่วนของ Web Server (Flask) -----------------
@@ -28,18 +29,27 @@ class VoiceBot(commands.Bot):
 
 bot = VoiceBot()
 
+# ลูปสำหรับเปลี่ยนสีสถานะบอททุกๆ 1 นาที (วนไป: เขียว -> เหลือง -> แดง)
+@tasks.loop(minutes=1)
+async def change_bot_status():
+    statuses = [
+        (discord.Status.online, discord.Streaming(name="🟢 ออนไลน์ 24 ชม. | ฟังเพลง", url="https://www.twitch.tv/discord")),
+        (discord.Status.idle, discord.Streaming(name="🟡 สถานะว่าง | พักผ่อน", url="https://www.twitch.tv/discord")),
+        (discord.Status.do_not_disturb, discord.Streaming(name="🔴 ห้ามรบกวน | กำลังสตรีม", url="https://www.twitch.tv/discord"))
+    ]
+    
+    # วนลูปเปลี่ยนสถานะทีละแบบ
+    for status_type, activity in statuses:
+        await bot.change_presence(status=status_type, activity=activity)
+        await asyncio.sleep(20) # เปลี่ยนสถานะทุกๆ 20 วินาทีภายในลูป 1 นาทีเพื่อให้ครบรวดเร็ว หรือจะปรับตามชอบได้ครับ
+
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name} (ID: {bot.user.id})')
     
-    # ตั้งค่าสถานะบอทให้ขึ้นแถบสีม่วง (Streaming Status)
-    # สามารถเปลี่ยนข้อความตรง name และลิงก์ Twitch ด้านล่างนี้ได้ตามชอบ
-    activity = discord.Streaming(
-        name="🎶 กำลังเปิดเพลงคลอ 24 ชม.", 
-        url="https://www.twitch.tv/discord"
-    )
-    await bot.change_presence(status=discord.Status.online, activity=activity)
-    print("Bot status updated to streaming (Purple Status).")
+    # เริ่มต้นทำงานลูปเปลี่ยนสีสถานะ
+    if not change_bot_status.is_running():
+        change_bot_status.start()
 
     # ระบบเข้าห้องเสียงอัตโนมัติ (ดึง ID จาก Environment Variable: VOICE_CHANNEL_ID)
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
@@ -54,24 +64,21 @@ async def on_ready():
         except Exception as e:
             print(f"Failed to auto-connect to voice channel: {e}")
 
-# คำสั่ง Slash Command: /summon (ดึงบอทเข้าห้องเสียงที่เราอยู่ หรือเลือกห้อง)
-@bot.tree.command(name="summon", description="สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่ทันที")
-async def summon(interaction: discord.Interaction):
-    if interaction.user.voice and interaction.user.voice.channel:
-        channel = interaction.user.voice.channel
-        voice_client = interaction.guild.voice_client
-        try:
-            if voice_client:
-                await voice_client.move_to(channel)
-            else:
-                await channel.connect()
-            await interaction.response.send_message(f'🎧 ดึงบอทเข้าห้อง **{channel.name}** สำเร็จ!', ephemeral=False)
-        except Exception as e:
-            await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
-    else:
-        await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
+# คำสั่ง Slash Command: /join (เลือกห้องเสียงจากเมนูดรอปดาวน์ได้เองทันที)
+@bot.tree.command(name="join", description="เลือกช่องเสียงเพื่อให้บอทเข้าไปสิง")
+@app_commands.describe(channel="เลือกห้องเสียงที่ต้องการให้บอทเข้าไป")
+async def join(interaction: discord.Interaction, channel: discord.VoiceChannel):
+    voice_client = interaction.guild.voice_client
+    try:
+        if voice_client:
+            await voice_client.move_to(channel)
+        else:
+            await channel.connect()
+        await interaction.response.send_message(f'🎧 บอทเข้ามาที่ห้องเสียง **{channel.name}** เรียบร้อยแล้ว!', ephemeral=False)
+    except Exception as e:
+        await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
 
-# คำสั่ง Slash Command: /leave (เชิญบอทออกจากห้องเสียง)
+# คำสั่ง Slash Command: /leave (สั่งให้บอทออกจากห้องเสียง)
 @bot.tree.command(name="leave", description="สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
 async def leave(interaction: discord.Interaction):
     voice_client = interaction.guild.voice_client
