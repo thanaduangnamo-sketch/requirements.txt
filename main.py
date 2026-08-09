@@ -1,5 +1,6 @@
 import os
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 intents = discord.Intents.default()
@@ -7,7 +8,16 @@ intents.guilds = True
 intents.voice_states = True
 intents.message_content = True
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+class VoiceBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix='!', intents=intents)
+
+    async def setup_hook(self):
+        # ซิงค์ Slash Commands ทั้งหมดให้แสดงบน Discord ทันที
+        await self.tree.sync()
+        print("🚀 Slash commands synced successfully.")
+
+bot = VoiceBot()
 
 @bot.event
 async def on_ready():
@@ -20,7 +30,7 @@ async def on_ready():
     )
     print("🟡 Bot status set to Idle (Yellow Dot).")
 
-    # ระบบเข้าห้องเสียงอัตโนมัติ
+    # ระบบเข้าห้องเสียงอัตโนมัติ (ดึง ID จาก Environment Variable: VOICE_CHANNEL_ID)
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
     if channel_id_str:
         try:
@@ -33,59 +43,58 @@ async def on_ready():
         except Exception as e:
             print(f"❌ Failed to auto-connect to voice channel: {e}")
 
-# คำสั่ง: !join
-@bot.command(name="join", help="ดึงบอทเข้าสู่ห้องเสียงที่คุณอยู่")
-async def join(ctx):
-    if ctx.author.voice and ctx.author.voice.channel:
-        channel = ctx.author.voice.channel
-        voice_client = ctx.guild.voice_client
+# ---------------------------------------------------------
+# คำสั่ง Slash Commands (/join, /leave, /ticket)
+# ---------------------------------------------------------
+
+@bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
+async def join(interaction: discord.Interaction):
+    if interaction.user.voice and interaction.user.voice.channel:
+        channel = interaction.user.voice.channel
+        voice_client = interaction.guild.voice_client
         try:
             if voice_client:
                 await voice_client.move_to(channel)
             else:
                 await channel.connect()
-            await ctx.send(f'🎧 ดึงบอทเข้าห้อง **{channel.name}** สำเร็จ!')
+            await interaction.response.send_message(f'🎧 ดึงบอทเข้าห้อง **{channel.name}** สำเร็จ!', ephemeral=False)
         except Exception as e:
-            await ctx.send(f'❌ เกิดข้อผิดพลาด: {e}')
+            await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
     else:
-        await ctx.send('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!')
+        await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
 
-# คำสั่ง: !leave
-@bot.command(name="leave", help="สั่งให้บอทออกจากห้องเสียง")
-async def leave(ctx):
-    voice_client = ctx.guild.voice_client
+@bot.tree.command(name="leave", description="👋 สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
+async def leave(interaction: discord.Interaction):
+    voice_client = interaction.guild.voice_client
     if voice_client:
         await voice_client.disconnect()
-        await ctx.send('👋 บอทออกจากห้องเสียงเรียบร้อยแล้ว')
+        await interaction.response.send_message('👋 บอทออกจากห้องเสียงเรียบร้อยแล้ว', ephemeral=False)
     else:
-        await ctx.send('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย')
+        await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# คำสั่ง: !ticket
-@bot.command(name="ticket", help="สร้างปุ่มสำหรับเปิดตั๋วติดต่อทีมงานแบบห้องส่วนตัว")
-async def ticket(ctx):
-    try:
-        await ctx.message.delete()
-    except:
-        pass
-
-    view = discord.ui.View(timeout=None)
+@bot.tree.command(name="ticket", description="🎫 สร้างปุ่มสำหรับเปิดตั๋วติดต่อทีมงานแบบห้องส่วนตัว")
+async def ticket(interaction: discord.Interaction):
+    view = discord.ui.View()
     
     async def button_callback(button_interaction: discord.Interaction):
         guild = button_interaction.guild
         user = button_interaction.user
         channel_name = f"ticket-{user.name}"
 
+        # ตั้งค่าสิทธิ์ (เห็นเฉพาะตัวผู้ใช้, แอดมิน, และบอท)
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
         }
 
+        # ค้นหายศแอดมิน (เปลี่ยนคำว่า "Admin" เป็นชื่อยศจริงในเซิร์ฟเวอร์ของคุณ)
         admin_role = discord.utils.get(guild.roles, name="Admin") 
         if admin_role:
             overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
 
         try:
+            # สร้างห้องแชทส่วนตัว
             ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
             
             await button_interaction.response.send_message(
@@ -93,6 +102,7 @@ async def ticket(ctx):
                 ephemeral=True
             )
 
+            # แท็กแอดมินในห้องส่วนตัว
             ping_text = admin_role.mention if admin_role else "@here"
             await ticket_channel.send(
                 f"👋 สวัสดีครับ {user.mention}\n"
@@ -106,10 +116,11 @@ async def ticket(ctx):
     button.callback = button_callback
     view.add_item(button)
 
-    await ctx.send(
+    await interaction.response.send_message(
         "✨ **ระบบเปิดตั๋วติดต่อทีมงาน (Ticket System)**\n"
         "คลิกปุ่มด้านล่างนี้ ระบบจะสร้างห้องแชทส่วนตัวให้คุณและแท็กแอดมินให้อัตโนมัติครับ:", 
-        view=view
+        view=view, 
+        ephemeral=False
     )
 
 TOKEN = os.environ.get("DISCORD_TOKEN")
