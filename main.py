@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats & Changelog System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog & Clear System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -25,7 +25,7 @@ intents.message_content = True
 intents.members = True
 
 # --- ระบบ Modal สำหรับกรอกรหัสยืนยันตัวตน ---
-class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตัวตน"):
+class VerifyModal(discord.ui.Modal, title="🛡️ ระบบยืนยันตัวตนความปลอดภัย"):
     code_input = discord.ui.TextInput(
         label="กรุณากรอกรหัส 6 หลักที่แสดงด้านล่าง",
         placeholder="เช่น 123456",
@@ -48,20 +48,20 @@ class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตั�
             if role:
                 try:
                     await member.add_roles(role)
-                    await interaction.response.send_message("✅ ยืนยันตัวตนสำเร็จ! คุณได้รับยศ Member เรียบร้อยแล้วครับ 🎉", ephemeral=True)
+                    await interaction.response.send_message("✨ **ยืนยันตัวตนสำเร็จ!** คุณได้รับยศ `Member` เรียบร้อยแล้วครับ 🎉", ephemeral=True)
                 except Exception as e:
                     await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการมอบยศ: {e}", ephemeral=True)
             else:
-                await interaction.response.send_message("❌ ไม่พบยศ 'Member' ในเซิร์ฟเวอร์นี้ กรุณาแจ้งแอดมิน", ephemeral=True)
+                await interaction.response.send_message("❌ ไม่พบยศ `Member` ในเซิร์ฟเวอร์นี้ กรุณาแจ้งแอดมิน", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ รหัสยืนยันตัวตนไม่ถูกต้อง! กรุณาลองใหม่อีกครั้ง", ephemeral=True)
+            await interaction.response.send_message("❌ **รหัสยืนยันตัวตนไม่ถูกต้อง!** กรุณากดปุ่มแล้วลองใหม่อีกครั้ง", ephemeral=True)
 
 # --- ระบบ View ยืนยันตัวตนแบบ Persistent ---
 class VerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="ยืนยันตัวตน", emoji="✅", style=discord.ButtonStyle.green, custom_id="persistent_verify_button_id")
+    @discord.ui.button(label="คลิกเพื่อยืนยันตัวตน", emoji="🛡️", style=discord.ButtonStyle.green, custom_id="persistent_verify_button_id")
     async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         random_code = str(random.randint(100000, 999999))
         modal = VerifyModal(expected_code=random_code)
@@ -121,20 +121,20 @@ class RulesView(discord.ui.View):
     async def rules_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("✅ ขอบคุณที่อ่านและยอมรับกฎของเซิร์ฟเวอร์เราครับ ขอให้สนุก!", ephemeral=True)
 
-# --- ระบบ View สำหรับ Changelog (กดรับทราบแล้วแจ้งเตือนเจ้าของบอท) ---
+# --- ระบบ View สำหรับ Changelog ---
 class ChangelogView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self.owner_id = 1532607357962420229
 
-    @discord.ui.button(label="รับทราบ", emoji="✅", style=discord.ButtonStyle.success, custom_id="persistent_changelog_ack_button_id")
+    @discord.ui.button(label="รับทราบประกาศ", emoji="✅", style=discord.ButtonStyle.success, custom_id="persistent_changelog_ack_button_id")
     async def ack_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message("✅ คุณได้กดรับทราบประกาศอัปเดตเรียบร้อยแล้วครับ!", ephemeral=True)
+        await interaction.response.send_message("✨ คุณได้กดรับทราบประกาศอัปเดตเรียบร้อยแล้วครับ!", ephemeral=True)
         
         try:
             owner = await interaction.client.fetch_user(self.owner_id)
             if owner and owner.id != interaction.user.id:
-                await owner.send(f"🔔 แจ้งเตือนจากเซิร์ฟเวอร์ **{interaction.guild.name}**: สมาชิกชื่อ `{interaction.user.name}` ได้กดปุ่มรับทราบประกาศอัปเดตแล้วครับ!")
+                await owner.send(f"🔔 **แจ้งเตือนจากเซิร์ฟเวอร์:** `{interaction.guild.name}`\n👤 สมาชิกชื่อ **{interaction.user.name}** ได้กดปุ่มรับทราบประกาศอัปเดตแล้วครับ!")
         except Exception:
             pass
 
@@ -158,7 +158,7 @@ async def on_ready():
     
     await bot.change_presence(
         status=discord.Status.dnd, 
-        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Changelog 24 ชม.")
+        activity=discord.Game(name="🎧 ระบบจัดการเซิร์ฟเวอร์ออนไลน์ 24 ชม.")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
@@ -201,63 +201,70 @@ async def leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# คำสั่ง /ticket
-@bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงานดีไซน์ใหม่")
+# คำสั่ง /ticket (ดีไซน์ใหม่ พรีเมียม)
+@bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงานดีไซน์พิเศษ")
 async def ticket(interaction: discord.Interaction):
     view = TicketView()
     
     embed = discord.Embed(
-        title="🌟 ศูนย์บริการช่วยเหลือผู้เล่น (Support Ticket)",
+        title="🌟 ศูนย์บริการช่วยเหลือและซัพพอร์ต (Support Ticket)",
         description=(
-            "────────────────────────\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
             "💬 **ต้องการความช่วยเหลือ หรือติดต่อทีมงาน?**\n"
-            "• แจ้งปัญหาการใช้งาน / บัคต่างๆ\n"
-            "• ติดต่อซื้อสินค้า / เติมเงิน / โดเนท\n"
-            "• ติดต่อสอบถามข้อมูลทั่วไป\n\n"
+            "• 🛠️ แจ้งปัญหาการใช้งาน / บัคต่างๆ\n"
+            "• 💳 ติดต่อซื้อสินค้า / เติมเงิน / โดเนท\n"
+            "• ❓ สอบถามข้อมูลหรือเรื่องอื่นๆ\n\n"
             "📌 **วิธีใช้งาน:** กดปุ่ม **'เปิดตั๋วติดต่อทีมงาน'** ด้านล่างนี้เพื่อสร้างห้องส่วนตัวสำหรับพูดคุยกับทีมงานได้ทันที\n"
-            "────────────────────────"
+            "━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0x9B59B6
     )
-    embed.set_footer(text="ระบบซัพพอร์ตออนไลน์ตลอด 24 ชั่วโมง 🔒", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+    embed.set_footer(text="🔒 ระบบซัพพอร์ตความปลอดภัยสูง ตลอด 24 ชม.", icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /verify
-@bot.tree.command(name="verify", description="🛡️ ส่งข้อความระบบยืนยันตัวตน (Verify)")
+# คำสั่ง /verify (ดีไซน์ใหม่)
+@bot.tree.command(name="verify", description="🛡️ ส่งข้อความระบบยืนยันตัวตนดีไซน์พรีเมียม")
 async def verify(interaction: discord.Interaction):
     view = VerifyView()
     
     embed = discord.Embed(
-        title="</> ระบบยืนยันตัวตน",
+        title="🛡️ ระบบยืนยันตัวตนเพื่อเข้าถึงเซิร์ฟเวอร์",
         description=(
-            "> 🔑 กดปุ่มด้านล่างเพื่อเริ่มยืนยันตัวตน\n"
-            "> {/} ระบบจะส่งรหัส 6 หลัก ให้คุณกรอก\n"
-            "> 🟩 กรอกรหัสถูกต้อง $\\rightarrow$ ได้รับ `@ · Member` ทันที\n"
-            "> 🩵 พร้อมให้บริการตลอด 24 ชั่วโมง"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "✨ ยินดีต้อนรับสมาชิกใหม่ทุกท่าน!\n"
+            "กรุณายืนยันตัวตนเพื่อปลดล็อคห้องต่างๆ ภายในเซิร์ฟเวอร์\n\n"
+            "📌 **ขั้นตอนการยืนยัน:**\n"
+            "1️⃣ กดปุ่ม **'คลิกเพื่อยืนยันตัวตน'** ด้านล่าง\n"
+            "2️⃣ กรอกรหัส 6 หลักที่ระบบแสดงขึ้นมาให้ถูกต้อง\n"
+            "3️⃣ รับยศ `Member` ทันทีอัตโนมัติ!\n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0x5865F2
     )
+    embed.set_footer(text="🔒 ป้องกันบอทและสแปมเข้าเซิร์ฟเวอร์ 100%", icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /rules
-@bot.tree.command(name="rules", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์")
+# คำสั่ง /rules (ดีไซน์ใหม่)
+@bot.tree.command(name="rules", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์ดีไซน์สวยงาม")
 async def rules(interaction: discord.Interaction):
     view = RulesView()
     
     embed = discord.Embed(
-        title="📜 กฎระเบียบประจำเซิร์ฟเวอร์ (Server Rules)",
+        title="📜 กฎระเบียบและข้อปฏิบัติประจำเซิร์ฟเวอร์",
         description=(
-            "**1. ให้เกียรติซึ่งกันและกัน**\n"
-            "> ห้ามเหยียดหยาม ดูหมิ่น หรือใช้คำพูดรุนแรงต่อสมาชิกท่านอื่น\n\n"
-            "**2. ห้ามสแปมข้อความหรือรูปภาพ**\n"
-            "> ห้ามส่งข้อความซ้ำๆ รัวๆ หรือส่งภาพที่ไม่เหมาะสมในช่องแชททั่วไป\n\n"
-            "**3. ห้ามโปรโมทหรือโฆษณาโดยไม่ได้รับอนุญาต**\n"
-            "> ห้ามโพสต์ลิงก์กลุ่ม ลิงก์ดิสอื่น หรือชวนโปรโมทสินค้าในแชทส่วนรวม\n\n"
-            "**4. ปฏิบัติตามคำสั่งของทีมงาน (Admin / Staff)**\n"
-            "> การตัดสินใจของแอดมินถือเป็นที่สิ้นสุดในทุกกรณี\n\n"
-            "⚠️ *หากฝ่าฝืนกฎ มีโทษตั้งแต่ตักเตือนจนถึงแบนออกจากเซิร์ฟเวอร์*"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📌 **1. ให้เกียรติและเคารพซึ่งกันและกัน**\n"
+            "> ห้ามเหยียดหยาม ดูหมิ่น หรือใช้ถ้อยคำรุนแรงต่อสมาชิกท่านอื่น\n\n"
+            "📌 **2. ห้ามสแปมข้อความหรือรูปภาพไม่เหมาะสม**\n"
+            "> ห้ามส่งข้อความซ้ำๆ รัวๆ หรือโพสต์เนื้อหา 18+ ในช่องแชททั่วไป\n\n"
+            "📌 **3. ห้ามโปรโมทหรือโฆษณาโดยไม่ได้รับอนุญาต**\n"
+            "> ห้ามส่งลิงก์เชิญดิสอื่น หรือชวนโปรโมทสินค้าในแชทส่วนรวม\n\n"
+            "📌 **4. ปฏิบัติตามคำสั่งของทีมงาน (Admin / Staff)**\n"
+            "> การตัดสินใจของทีมงานถือเป็นข้อยุติและสิ้นสุดในทุกกรณี\n\n"
+            "⚠️ *หากฝ่าฝืนกฎระเบียบ จะมีบทลงโทษตั้งแต่ตักเตือนจนถึงแบนถาวร*\n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0xE74C3C
     )
@@ -265,7 +272,7 @@ async def rules(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /changelog
+# คำสั่ง /changelog (ดีไซน์ใหม่)
 @bot.tree.command(name="changelog", description="📢 สร้างห้องประกาศอัปเดตแบบล็อกห้อง พร้อมปุ่มรับทราบ")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def changelog(interaction: discord.Interaction):
@@ -290,11 +297,14 @@ async def changelog(interaction: discord.Interaction):
         embed = discord.Embed(
             title="🚀 ประกาศบันทึกการอัปเดตระบบ (Changelog)",
             description=(
-                "**✨ รายการอัปเดตประจำเวอร์ชัน:**\n"
-                "• 🎟️ **ระบบ Ticket ดีไซน์ใหม่:** ปรับโฆษณาและหน้าต่างเปิดตั๋วให้สวยงามยิ่งขึ้น\n"
-                "• 🔒 **ห้องประกาศล็อกพิเศษ:** ช่องนี้ถูกซ่อนไว้เฉพาะทีมงานและผู้มีสิทธิ์\n"
-                "• ✅ **ระบบยืนยันรับทราบ:** กดปุ่มด้านล่างเพื่อยืนยันว่าคุณรับทราบประกาศนี้แล้ว\n\n"
-                "📌 *กรุณากดปุ่ม **'รับทราบ'** ด้านล่างนี้ครับ*"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
+                "• 🎟️ **ระบบ Ticket ดีไซน์ใหม่:** ปรับโฉมหน้าต่างซัพพอร์ตให้สวยงามยิ่งขึ้น\n"
+                "• 🛡️ **ระบบ Verify / Rules ดีไซน์ใหม่:** จัดรูปแบบข้อความให้อ่านง่ายและเป็นทางการ\n"
+                "• 🧹 **เพิ่มคำสั่ง /clear:** คำสั่งสำหรับผู้ดูแลในการลบข้อความได้อย่างรวดเร็ว\n"
+                "• 🔒 **ห้องประกาศล็อกพิเศษ:** ช่องนี้ถูกซ่อนไว้เฉพาะทีมงานและผู้มีสิทธิ์\n\n"
+                "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
+                "━━━━━━━━━━━━━━━━━━━━━━"
             ),
             color=0xF1C40F
         )
@@ -305,8 +315,30 @@ async def changelog(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-# คำสั่ง /invite
-@bot.tree.command(name="invite", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร (ไม่มีวันหมดอายุ)")
+# คำสั่ง /clear (สำหรับลบข้อความ)
+@bot.tree.command(name="clear", description="🧹 ลบข้อความในแชทจำนวนตามที่กำหนด (1 - 100 ข้อความ)")
+@app_commands.describe(amount="จำนวนข้อความที่ต้องการลบ (1-100)")
+@app_commands.checks.has_permissions(manage_messages=True)
+async def clear(interaction: discord.Interaction, amount: int):
+    if amount < 1 or amount > 100:
+        await interaction.response.send_message("⚠️ กรุณาระบุจำนวนข้อความระหว่าง **1 ถึง 100** เท่านั้นครับ!", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        deleted = await interaction.channel.purge(limit=amount)
+        
+        embed = discord.Embed(
+            title="🧹 ลบข้อความสำเร็จ",
+            description=f"ลบข้อความจำนวน **{len(deleted)}** ข้อความเรียบร้อยแล้วครับ ✨",
+            color=0x2ECC71
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e} (โปรดตรวจสอบสิทธิ์ Manage Messages ของบอท)", ephemeral=True)
+
+# คำสั่ง /invite (ดีไซน์ใหม่)
+@bot.tree.command(name="invite", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร")
 async def invite(interaction: discord.Interaction):
     try:
         target_channel = interaction.channel
@@ -321,9 +353,11 @@ async def invite(interaction: discord.Interaction):
         embed = discord.Embed(
             title="🔗 ลิงค์เชิญเข้าสู่เซิร์ฟเวอร์ถาวร",
             description=(
-                f"คุณสามารถคัดลอกลิงค์ด้านล่างนี้ไปชวนเพื่อนๆ เข้าเซิร์ฟเวอร์ได้เลยครับ!\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "คุณสามารถคัดลอกลิงค์ด้านล่างนี้ไปชวนเพื่อนๆ เข้าเซิร์ฟเวอร์ได้เลยครับ!\n\n"
                 f"👉 **{invite_link.url}**\n\n"
-                f"📌 *ลิงค์นี้ไม่มีวันหมดอายุและใช้งานได้ไม่จำกัดจำนวนครั้ง*"
+                "📌 *ลิงค์นี้ไม่มีวันหมดอายุและใช้งานได้ไม่จำกัดจำนวนครั้ง*\n"
+                "━━━━━━━━━━━━━━━━━━━━━━"
             ),
             color=0x2ECC71
         )
@@ -331,7 +365,7 @@ async def invite(interaction: discord.Interaction):
 
         await interaction.response.send_message(embed=embed, ephemeral=False)
     except Exception as e:
-        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการสร้างลิงค์เชิญ: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
+        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
 
 # คำสั่ง /stats
 @bot.tree.command(name="stats", description="📊 สร้างหมวดหมู่และช่องเสียงสถิติเซิร์ฟเวอร์ไว้ด้านบนสุด")
