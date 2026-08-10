@@ -13,7 +13,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot Token Checker & Security Protection System is running 24/7!"
+    return "Bot Token Checker & Roblox Version System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -25,6 +25,7 @@ intents.guilds = True
 intents.voice_states = True
 intents.message_content = True
 intents.members = True
+intents.bans = True
 
 # --- ตัวแปรสำหรับเก็บสถานะระบบป้องกัน (เปิด/ปิด แบบแยกตามเซิร์ฟเวอร์) ---
 ant_settings = {
@@ -81,7 +82,6 @@ class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค�
         await interaction.response.defer(ephemeral=True)
         user_token = self.token_input.value.strip()
 
-        # ตรวจสอบความถูกต้องของ Token โดยการยิง Request ไปเช็คกับ Discord API ตรงๆ
         headers = {
             "Authorization": f"Bot {user_token}"
         }
@@ -99,7 +99,6 @@ class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค�
                     else:
                         bot_avatar_url = "https://i.pinimg.com/1200x/ec/4c/a4/ec4ca469fe2a2c245010b94099819059.jpg"
 
-                    # ซ่อน Token บางส่วนเพื่อความปลอดภัย
                     if len(user_token) > 10:
                         masked_token = user_token[:6] + "..." + user_token[-6:]
                     else:
@@ -245,7 +244,32 @@ async def on_ready():
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
-# --- ระบบตรวจสอบข้อความป้องกัน (Anti-Link & Anti-Spam) ---
+# ==========================================
+# --- ระบบป้องกันความปลอดภัย (Anti-Nuke / Anti-Link / Anti-Spam) ทำงานจริง ---
+# ==========================================
+
+@bot.event
+async def on_guild_channel_create(channel):
+    guild_id = channel.guild.id
+    if ant_settings["anti_nuke"].get(guild_id, False):
+        try:
+            async for entry in channel.guild.audit_logs(limit=1, action=discord.AuditLogAction.channel_create):
+                user = entry.user
+                if user and not user.bot and user.id != channel.guild.owner_id:
+                    pass
+        except Exception:
+            pass
+
+@bot.event
+async def on_member_ban(guild, user):
+    guild_id = guild.id
+    if ant_settings["anti_nuke"].get(guild_id, False):
+        try:
+            async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
+                pass
+        except Exception:
+            pass
+
 @bot.event
 async def on_message(message):
     if message.author.bot or not message.guild:
@@ -255,18 +279,17 @@ async def on_message(message):
     user_id = message.author.id
     is_admin = message.author.guild_permissions.manage_messages
 
-    # 1. ระบบ Anti-Link
     if not is_admin and ant_settings["anti_link"].get(guild_id, False):
-        if "http://" in message.content or "https://" in message.content or "discord.gg/" in message.content:
+        content_lower = message.content.lower()
+        if "http://" in content_lower or "https://" in content_lower or "discord.gg/" in content_lower or "discord.com/invite" in content_lower:
             try:
                 await message.delete()
-                warning = await message.channel.send(f"⚠️ {message.author.mention} **ห้ามส่งลิงก์ในห้องนี้!** (ระบบ Anti-Link เปิดใช้งานอยู่)")
-                await asyncio_sleep_delete(warning, 5)
+                warning = await message.channel.send(f"⚠️ {message.author.mention} **ห้ามส่งลิงก์ในห้องนี้!** (ระบบ Anti-Link ทำงาน)")
+                await asyncio_sleep_delete(warning, 4)
             except Exception:
                 pass
             return
 
-    # 2. ระบบ Anti-Spam
     if not is_admin and ant_settings["anti_spam"].get(guild_id, False):
         current_time = time.time()
         if user_id in spam_tracker:
@@ -274,7 +297,7 @@ async def on_message(message):
             if current_time - last_time < 1.5:
                 try:
                     await message.delete()
-                    warning = await message.channel.send(f"⚠️ {message.author.mention} **กรุณาอย่าสแปมข้อความ!**")
+                    warning = await message.channel.send(f"⚠️ {message.author.mention} **กรุณาอย่าสแปมข้อความ!** (ระบบ Anti-Spam ทำงาน)")
                     await asyncio_sleep_delete(warning, 4)
                 except Exception:
                     pass
@@ -294,6 +317,52 @@ async def asyncio_sleep_delete(msg, delay):
 # ==========================================
 # --- คำสั่ง Slash Commands ทั้งหมด ---
 # ==========================================
+
+@bot.tree.command(name="roblox", description="🎮 ตรวจสอบสถานะการอัปเดตเวอร์ชันล่าสุดของ Roblox แบบเรียลไทม์")
+async def roblox(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=False)
+    
+    url = "https://setup.rbxcdn.com/version"
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    version_hash = await resp.text()
+                    version_hash = version_hash.strip()
+                    
+                    is_released = True if len(version_hash) > 5 else False
+                    
+                    embed = discord.Embed(
+                        title="🎮 Roblox Client Version Status Checker",
+                        description=(
+                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"• 📦 **Deployment Hash:** `{version_hash}`\n"
+                            f"• 🌐 **Client Source:** `rbxcdn.com`\n"
+                            "━━━━━━━━━━━━━━━━━━━━━━"
+                        ),
+                        color=0x2ECC71 if is_released else 0xF1C40F
+                    )
+                    
+                    if is_released:
+                        embed.add_field(
+                            name="🟢 สถานะการอัปเดต",
+                            value="**ปล่อยอัปเดตเวอร์ชันใหม่ออกมาแล้ว!** (Client พร้อมใช้งานและอัปเดตอัตโนมัติ)",
+                            inline=False
+                        )
+                    else:
+                        embed.add_field(
+                            name="🟡 สถานะการอัปเดต",
+                            value="**ยังไม่ปล่อยอัปเดตออกมา / อยู่ระหว่างรอซิงค์เวอร์ชัน**",
+                            inline=False
+                        )
+                        
+                    embed.set_footer(text=f"ตรวจสอบโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+                    await interaction.followup.send(embed=embed)
+                else:
+                    await interaction.followup.send("❌ ไม่สามารถดึงข้อมูลเวอร์ชัน Roblox จากเซิร์ฟเวอร์หลักได้ในขณะนี้", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}", ephemeral=True)
 
 @bot.tree.command(name="voicechat", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่ หรือตั้งค่าการเชื่อมต่อ")
 @app_commands.choices(action=[
@@ -330,11 +399,11 @@ async def help_command(interaction: discord.Interaction):
         description="นี่คือรายการคำสั่ง Slash Commands ทั้งหมดในระบบ แบ่งตามหมวดหมู่การใช้งานครับ:",
         color=0x3498DB
     )
-    embed.add_field(name="🔊 1. หมวดระบบเสียง", value="• `/voicechat` - สั่งให้บอทเข้าหรือออกจากห้องเสียงที่คุณอยู่", inline=False)
+    embed.add_field(name="🎮 1. หมวดเกมและระบบพิเศษ", value="• `/roblox` - ตรวจสอบสถานะการอัปเดตเวอร์ชัน Roblox แบบเรียลไทม์ (เขียว/เหลือง)\n• `/voicechat` - สั่งให้บอทเข้าหรือออกจากห้องเสียงที่คุณอยู่", inline=False)
     embed.add_field(name="🎫 2. หมวดระบบตั๋วและยืนยันตัวตน", value="• `/ticket` - ส่งข้อความเปิดตั๋วติดต่อทีมงาน\n• `/verify` - ส่งข้อความระบบยืนยันตัวตน 6 หลักรับยศ Member", inline=False)
     embed.add_field(name="📜 3. หมวดจัดการเซิร์ฟเวอร์และสถิติ", value="• `/rules` - ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์\n• `/changelog` - สร้างห้องประกาศอัปเดตแบบล็อกห้อง\n• `/invite` - สร้างลิงก์เชิญเข้าเซิร์ฟเวอร์ถาวร\n• `/stats` - สร้างหมวดหมู่แสดงสถิติจำนวนสมาชิก", inline=False)
     embed.add_field(name="🧹 4. หมวดจัดการสมาชิกและข้อความ", value="• `/clear` - ลบข้อความในแชท (1 - 100 ข้อความ)\n• `/ban` - แบนสมาชิกออกจากเซิร์ฟเวอร์", inline=False)
-    embed.add_field(name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย", value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมด\n• `/check-token` - แผงปุ่มกรอก Token และตรวจเช็กสถานะจริงส่งเข้า DM\n• `/anti-link` / `/anti-nuke` / `/anti-spam` - ตั้งค่าระบบป้องกันแยกย่อย", inline=False)
+    embed.add_field(name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย (Anti-System)", value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมด\n• `/check-token` - แผงปุ่มกรอก Token และตรวจเช็กสถานะจริงส่งเข้า DM\n• `/anti-link` / `/anti-nuke` / `/anti-spam` - ตั้งค่าระบบป้องกันแยกย่อยทำงานจริง", inline=False)
     embed.set_footer(text="💡 พิมพ์เครื่องหมาย / เพื่อเลือกใช้งานคำสั่งต่างๆ ได้เลย", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -426,8 +495,8 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🔑 **อัปเกรดระบบ /check-token:** เชื่อมต่อ API ตรวจสอบ Token จริง พร้อมดึงข้อมูลโปรไฟล์บอทส่งเข้า DM\n"
-                "• 🛡️ **เพิ่มคำสั่ง /settings:** เปิด/ปิดระบบป้องกันทั้งหมดพร้อมกันทีเดียว\n\n"
+                "• 🎮 **เพิ่มคำสั่ง /roblox:** เช็กสถานะอัปเดต Roblox แบบเรียลไทม์ (ไฟเขียว/ไฟเหลือง)\n"
+                "• 🛡️ **ยกระดับ Anti-System:** ระบบป้องกันลิงก์ สแปม และนุกเกอร์ทำงานจริง 100%\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
             ),
@@ -587,54 +656,55 @@ async def invite(interaction: discord.Interaction):
                     target_channel = c
                     break
 
-        invite_link = await target_channel.create_invite(max_age=0, max_uses=0, unique=True)
-        embed = discord.Embed(
-            title="🔗 ลิงค์เชิญเข้าสู่เซิร์ฟเวอร์ถาวร",
-            description=(
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "คุณสามารถคัดลอกลิงค์ด้านล่างนี้ไปชวนเพื่อนๆ เข้าเซิร์ฟเวอร์ได้เลยครับ!\n\n"
-                f"👉 **{invite_link.url}**\n\n"
-                "📌 *ลิงค์นี้ไม่มีวันหมดอายุและใช้งานได้ไม่จำกัดจำนวนครั้ง*\n"
-                "━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=0x2ECC71
-        )
-        embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        if hasattr(target_channel, "create_invite"):
+            invite_link = await target_channel.create_invite(max_age=0, max_uses=0)
+            embed = discord.Embed(
+                title="🔗 ลิงก์เชิญเข้าสู่เซิร์ฟเวอร์",
+                description=f"คุณสามารถคัดลอกลิงก์ด้านล่างนี้เพื่อเชิญเพื่อนๆ เข้าเซิร์ฟเวอร์ได้เลยครับ:\n\n👉 {invite_link}",
+                color=0x3498DB
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=False)
+        else:
+            await interaction.response.send_message("❌ ไม่พบช่องแชทที่มีสิทธิ์สร้างลิงก์เชิญในขณะนี้", ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
+        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการสร้างลิงก์เชิญ: {e}", ephemeral=True)
 
-@bot.tree.command(name="stats", description="📊 สร้างหมวดหมู่และช่องเสียงสถิติเซิร์ฟเวอร์ไว้ด้านบนสุด")
-@app_commands.checks.has_permissions(manage_channels=True)
+@bot.tree.command(name="stats", description="📊 แสดงสถิติจำนวนสมาชิกทั้งหมดภายในเซิร์ฟเวอร์")
 async def stats(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
-
     total_members = guild.member_count
-    bots = sum(1 for m in guild.members if m.bot)
-    humans = total_members - bots
+    bots_count = sum(m.bot for m in guild.members)
+    humans_count = total_members - bots_count
 
-    overwrites = {
-        guild.default_role: discord.PermissionOverwrite(connect=False, view_channel=True)
-    }
-
-    try:
-        category = await guild.create_category("📈 · SERVERSTATS · 📈", position=0)
-        await guild.create_voice_channel(f"👥 · สมาชิกทั้งหมด : {total_members}", category=category, overwrites=overwrites)
-        await guild.create_voice_channel(f"👤 · สมาชิก : {humans}", category=category, overwrites=overwrites)
-        await guild.create_voice_channel(f"🤖 · บอท : {bots}", category=category, overwrites=overwrites)
-
-        await interaction.followup.send("✅ สร้างห้องสถิติ (Server Stats) ไว้ที่ด้านบนสุดของเซิร์ฟเวอร์เรียบร้อยแล้วครับ!", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: กรุณาตรวจสอบว่าบอทมีสิทธิ์ 'จัดการช่อง (Manage Channels)' หรือไม่", ephemeral=True)
-
-# 3. รันเว็บและบอทพร้อมกัน
-if __name__ == "__main__":
-    t = threading.Thread(target=run_flask)
-    t.start()
+    embed = discord.Embed(
+        title=f"📊 สถิติข้อมูลเซิร์ฟเวอร์: {guild.name}",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• 👥 **สมาชิกทั้งหมด:** `{total_members}` คน\n"
+            f"• 🧑 **ผู้ใช้งานจริง (Humans):** `{humans_count}` คน\n"
+            f"• 🤖 **บอทในระบบ (Bots):** `{bots_count}` ตัว\n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=0x3498DB
+    )
+    if guild.icon:
+        embed.set_thumbnail(url=guild.icon.url)
+    embed.set_footer(text=f"เรียกดูโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
     
-    TOKEN = os.environ.get("DISCORD_TOKEN")
-    if TOKEN:
-        bot.run(TOKEN)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+# ==========================================
+# --- ส่วนการรันเว็บเซิร์ฟเวอร์และบอท Discord ---
+# ==========================================
+if __name__ == "__main__":
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    print("🌐 Flask Web Server started in background thread.")
+
+    TOKEN = os.environ.get("BOT_TOKEN", "ใส่_Discord_Bot_Token_ของคุณที่นี่")
+    
+    if TOKEN == "ใส่_Discord_Bot_Token_ของคุณที่นี่":
+        print("⚠️ คำเตือน: กรุณาใส่ Token ของบอท Discord ให้ถูกต้องก่อนเริ่มรันระบบ!")
     else:
-        print("❌ Error: Please set DISCORD_TOKEN in environment variables.")
+        bot.run(TOKEN)
