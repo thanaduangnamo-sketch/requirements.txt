@@ -42,7 +42,6 @@ class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตั�
             guild = interaction.guild
             member = interaction.user
             
-            # ค้นหายศ Member (เปลี่ยนชื่อยศในเครื่องหมายคำพูดได้ตามต้องการ)
             role = discord.utils.get(guild.roles, name="Member")
             
             if role:
@@ -56,7 +55,7 @@ class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตั�
         else:
             await interaction.response.send_message("❌ รหัสยืนยันตัวตนไม่ถูกต้อง! กรุณาลองใหม่อีกครั้ง", ephemeral=True)
 
-# --- ระบบ View ยืนยันตัวตนแบบ Persistent (ปุ่มไม่พังเวลาบอทรีสตาร์ท) ---
+# --- ระบบ View ยืนยันตัวตนแบบ Persistent ---
 class VerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -111,7 +110,6 @@ class VoiceBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # ลงทะเบียนปุ่มถาวรทั้งหมดเพื่อให้ปุ่มเก่าในแชทใช้งานได้ปกติ
         self.add_view(TicketView())
         self.add_view(VerifyView())
         await self.tree.sync()
@@ -123,14 +121,13 @@ bot = VoiceBot()
 async def on_ready():
     print(f'✅ Logged in as {bot.user.name} (ID: {bot.user.id})')
     
-    # ตั้งค่าสถานะออนไลน์เป็นจุดสีเทา (Invisible)
+    # ตั้งค่าสถานะออนไลน์เป็นจุดสีแดง (Do Not Disturb)
     await bot.change_presence(
-        status=discord.Status.invisible, 
+        status=discord.Status.dnd, 
         activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Verify 24 ชม.")
     )
-    print("⚪ Bot status set to Invisible (Gray Dot).")
+    print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
-    # เชื่อมต่อห้องเสียงอัตโนมัติ
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
     if channel_id_str:
         try:
@@ -143,9 +140,7 @@ async def on_ready():
         except Exception as e:
             print(f"❌ Failed to auto-connect to voice channel: {e}")
 
-# ---------------------------------------------------------
-# คำสั่งที่ 1: /join (ดึงบอทเข้าห้องเสียง)
-# ---------------------------------------------------------
+# คำสั่ง /join
 @bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
 async def join(interaction: discord.Interaction):
     if interaction.user.voice and interaction.user.voice.channel:
@@ -162,9 +157,7 @@ async def join(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
 
-# ---------------------------------------------------------
-# คำสั่งที่ 2: /leave (ให้บอทออกจากห้องเสียง)
-# ---------------------------------------------------------
+# คำสั่ง /leave
 @bot.tree.command(name="leave", description="👋 สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
 async def leave(interaction: discord.Interaction):
     voice_client = interaction.guild.voice_client
@@ -174,9 +167,7 @@ async def leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# ---------------------------------------------------------
-# คำสั่งที่ 3: /ticket (ระบบเปิดตั๋ว + รูป Pinterest)
-# ---------------------------------------------------------
+# คำสั่ง /ticket
 @bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋ว Ticket สำหรับสมาชิกทุกคน")
 async def ticket(interaction: discord.Interaction):
     view = TicketView()
@@ -200,9 +191,7 @@ async def ticket(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# ---------------------------------------------------------
-# คำสั่งที่ 4: /verify (ระบบยืนยันตัวตน)
-# ---------------------------------------------------------
+# คำสั่ง /verify
 @bot.tree.command(name="verify", description="🛡️ ส่งข้อความระบบยืนยันตัวตน (Verify)")
 async def verify(interaction: discord.Interaction):
     view = VerifyView()
@@ -220,7 +209,7 @@ async def verify(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# 3. รันเว็บเซิร์ฟเวอร์และบอทพร้อมกัน
+# 3. รันเว็บและบอทพร้อมกัน
 if __name__ == "__main__":
     t = threading.Thread(target=run_flask)
     t.start()
