@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket & Verification System is running 24/7!"
+    return "Voice Bot, Ticket, Verification & Rules System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -105,6 +105,15 @@ class TicketView(discord.ui.View):
         except Exception as e:
             await interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
 
+# --- ระบบ View สำหรับกฎประจำเซิร์ฟเวอร์แบบ Persistent ---
+class RulesView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="รับทราบและยอมรับกฎ", emoji="📜", style=discord.ButtonStyle.success, custom_id="persistent_rules_button_id")
+    async def rules_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("✅ ขอบคุณที่อ่านและยอมรับกฎของเซิร์ฟเวอร์เราครับ ขอให้สนุก!", ephemeral=True)
+
 class VoiceBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
@@ -112,6 +121,7 @@ class VoiceBot(commands.Bot):
     async def setup_hook(self):
         self.add_view(TicketView())
         self.add_view(VerifyView())
+        self.add_view(RulesView()) # ลงทะเบียนปุ่มกฎประจำเซิร์ฟเวอร์ให้กดได้ตลอด
         await self.tree.sync()
         print("🚀 Slash commands synced and Persistent Views loaded successfully.")
 
@@ -121,10 +131,10 @@ bot = VoiceBot()
 async def on_ready():
     print(f'✅ Logged in as {bot.user.name} (ID: {bot.user.id})')
     
-    # ตั้งค่าสถานะออนไลน์เป็นจุดสีแดง (Do Not Disturb)
+    # ตั้งค่าสถานะจุดสีแดง (DND)
     await bot.change_presence(
         status=discord.Status.dnd, 
-        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Verify 24 ชม.")
+        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Rules 24 ชม.")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
@@ -206,6 +216,30 @@ async def verify(interaction: discord.Interaction):
         ),
         color=0x5865F2
     )
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+
+# คำสั่ง /rules (กฎประจำเซิร์ฟเวอร์)
+@bot.tree.command(name="rules", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์")
+async def rules(interaction: discord.Interaction):
+    view = RulesView()
+    
+    embed = discord.Embed(
+        title="📜 กฎระเบียบประจำเซิร์ฟเวอร์ (Server Rules)",
+        description=(
+            "**1. ให้เกียรติซึ่งกันและกัน**\n"
+            "> ห้ามเหยียดหยาม ดูหมิ่น หรือใช้คำพูดรุนแรงต่อสมาชิกท่านอื่น\n\n"
+            "**2. ห้ามสแปมข้อความหรือรูปภาพ**\n"
+            "> ห้ามส่งข้อความซ้ำๆ รัวๆ หรือส่งภาพที่ไม่เหมาะสมในช่องแชททั่วไป\n\n"
+            "**3. ห้ามโปรโมทหรือโฆษณาโดยไม่ได้รับอนุญาต**\n"
+            "> ห้ามโพสต์ลิงก์กลุ่ม ลิงก์ดิสอื่น หรือชวนโปรโมทสินค้าในแชทส่วนรวม\n\n"
+            "**4. ปฏิบัติตามคำสั่งของทีมงาน (Admin / Staff)**\n"
+            "> การตัดสินใจของแอดมินถือเป็นที่สิ้นสุดในทุกกรณี\n\n"
+            "⚠️ *หากฝ่าฝืนกฎ มีโทษตั้งแต่ตักเตือนจนถึงแบนออกจากเซิร์ฟเวอร์*"
+        ),
+        color=0xE74C3C # สีแดงเข้ากับสถานะบอท
+    )
+    embed.set_footer(text="กรุณาอ่านและปฏิบัติตามอย่างเคร่งครัด", icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
