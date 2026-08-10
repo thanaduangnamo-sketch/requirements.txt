@@ -2,10 +2,11 @@ import os
 import random
 import threading
 import time
+import asyncio
 import aiohttp
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from flask import Flask
 
 # 1. ส่วนของเว็บเซิร์ฟเวอร์ Flask เพื่อเปิดพอร์ตให้ Render ตรวจพบ
@@ -13,7 +14,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot Token Checker & Roblox Version System is running 24/7!"
+    return "Bot Token Checker & Roblox Version Auto-Notifier is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -27,14 +28,19 @@ intents.message_content = True
 intents.members = True
 intents.bans = True
 
-# --- ตัวแปรสำหรับเก็บสถานะระบบป้องกัน (เปิด/ปิด แบบแยกตามเซิร์ฟเวอร์) ---
+# --- ตัวแปรสำหรับเก็บค่าการตั้งค่าและเวอร์ชันล่าสุดของ Roblox ---
 ant_settings = {
     "anti_link": {},
     "anti_nuke": {},
     "anti_spam": {}
 }
 
-# เก็บข้อมูลเช็คสแปมข้อความ (User ID -> Timestamp)
+# เก็บ Channel ID สำหรับแจ้งเตือน Roblox แยกตาม Guild (Guild ID -> Channel ID)
+roblox_notify_channels = {}
+
+# เก็บเวอร์ชันล่าสุดของ Roblox เพื่อเทียบว่ามีการเปลี่ยนแปลงหรือไม่
+latest_roblox_version = None
+
 spam_tracker = {}
 
 # --- ระบบ Modal สำหรับกรอกรหัสยืนยันตัวตน ---
@@ -128,7 +134,6 @@ class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค�
                 else:
                     await interaction.followup.send("❌ **Token ไม่ถูกต้อง หรือหมดอายุ!** กรุณาตรวจสอบ Token ของคุณใหม่อีกครั้งจาก Discord Developer Portal", ephemeral=True)
 
-# --- ระบบ View ที่มีปุ่มกดเปิด Modal ใส่ Token ---
 class TokenView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -137,7 +142,6 @@ class TokenView(discord.ui.View):
     async def token_button_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(TokenInputModal())
 
-# --- ระบบ View ยืนยันตัวตนแบบ Persistent ---
 class VerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -149,7 +153,6 @@ class VerifyView(discord.ui.View):
         modal.code_input.label = f"กรอกรหัส 6 หลักนี้: {random_code}"
         await interaction.response.send_modal(modal)
 
-# --- ระบบ View สำหรับ Ticket แบบ Persistent ---
 class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -193,7 +196,6 @@ class TicketView(discord.ui.View):
         except Exception as e:
             await interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
 
-# --- ระบบ View สำหรับกฎประจำเซิร์ฟเวอร์แบบ Persistent ---
 class RulesView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -202,7 +204,6 @@ class RulesView(discord.ui.View):
     async def rules_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("✅ ขอบคุณที่อ่านและยอมรับกฎของเซิร์ฟเวอร์เราครับ ขอให้สนุก!", ephemeral=True)
 
-# --- ระบบ View สำหรับ Changelog แบบ Persistent ---
 class ChangelogView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -231,6 +232,9 @@ class VoiceBot(commands.Bot):
         self.add_view(TokenView())
         await self.tree.sync()
         print("🚀 Slash commands synced and Persistent Views loaded successfully.")
+        
+        # เริ่มต้นลูปตรวจจับเวอร์ชัน Roblox อัตโนมัติเบื้องหลัง
+        check_roblox_updates.start()
 
 bot = VoiceBot()
 
@@ -245,7 +249,63 @@ async def on_ready():
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
 # ==========================================
-# --- ระบบป้องกันความปลอดภัย (Anti-Nuke / Anti-Link / Anti-Spam) ทำงานจริง ---
+# --- Background Task: เช็กอัปเดต Roblox ทุกๆ 3 นาที ---
+# ==========================================
+@tasks.loop(minutes=3)
+async def check_roblox_updates():
+    global latest_roblox_version
+    url = "https://setup.rbxcdn.com/version"
+    
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url) as resp:
+                if resp.status == 200:
+                    new_version = await resp.text()
+                    new_version = new_version.strip()
+                    
+                    if latest_roblox_version is None:
+                        latest_roblox_version = new_version
+                        print(f"🎮 Initialized Roblox Version: {new_version}")
+                        return
+                    
+                    if new_version != latest_roblox_version:
+                        old_version = latest_roblox_version
+                        latest_roblox_version = new_version
+                        print(f"🚨 Roblox Updated! {old_version} -> {new_version}")
+                        
+                        # วนลูปส่งแจ้งเตือนไปยังทุกเซิร์ฟเวอร์ที่ตั้งค่าห้องไว้
+                        for guild_id, channel_id in roblox_notify_channels.items():
+                            guild = bot.get_guild(guild_id)
+                            if guild:
+                                channel = guild.get_channel(channel_id)
+                                if channel:
+                                    embed = discord.Embed(
+                                        title="🚨 แจ้งเตือน! Roblox มีการอัปเดตเวอร์ชันใหม่!",
+                                        description=(
+                                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                                            "🎮 **ตรวจพบเวอร์ชันใหม่ของ Roblox ถูกปล่อยออกมาแล้ว!**\n"
+                                            f"• 📦 **เวอร์ชันเก่า:** `{old_version}`\n"
+                                            f"• 🔥 **เวอร์ชันใหม่:** `{new_version}`\n"
+                                            "• 🌐 **แหล่งที่มา:** `rbxcdn.com`\n"
+                                            "━━━━━━━━━━━━━━━━━━━━━━"
+                                        ),
+                                        color=0xE74C3C
+                                    )
+                                    embed.set_footer(text="ระบบตรวจสอบอัตโนมัติ 24 ชม.", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+                                    
+                                    try:
+                                        await channel.send(content="@everyone", embed=embed)
+                                    except Exception as e:
+                                        print(f"❌ Failed to send roblox update notification in guild {guild.name}: {e}")
+        except Exception as e:
+            print(f"⚠️ Error checking Roblox version loop: {e}")
+
+@check_roblox_updates.before_loop
+async def before_check_roblox():
+    await bot.wait_until_ready()
+
+# ==========================================
+# --- ระบบป้องกันความปลอดภัย (Anti-Nuke / Anti-Link / Anti-Spam) ---
 # ==========================================
 
 @bot.event
@@ -364,6 +424,21 @@ async def roblox(interaction: discord.Interaction):
         except Exception as e:
             await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}", ephemeral=True)
 
+@bot.tree.command(name="set-roblox-channel", description="📢 เลือกห้องสำหรับให้บอทแจ้งเตือนอัปเดตเวอร์ชัน Roblox พร้อมแท็ก @everyone")
+@app_commands.describe(channel="เลือกห้องแชทที่ต้องการให้แจ้งเตือนอัปเดต")
+@app_commands.checks.has_permissions(administrator=True)
+async def set_roblox_channel(interaction: discord.Interaction, channel: discord.TextChannel):
+    guild_id = interaction.guild.id
+    roblox_notify_channels[guild_id] = channel.id
+
+    embed = discord.Embed(
+        title="✅ ตั้งค่าห้องแจ้งเตือน Roblox สำเร็จ",
+        description=f"บอทจะส่งข้อความแจ้งเตือนพร้อมแท็ก `@everyone` ไปยังห้อง {channel.mention} ทันทีเมื่อ Roblox มีการอัปเดตเวอร์ชันใหม่!",
+        color=0x2ECC71
+    )
+    embed.set_footer(text=f"ตั้งค่าโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
 @bot.tree.command(name="voicechat", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่ หรือตั้งค่าการเชื่อมต่อ")
 @app_commands.choices(action=[
     app_commands.Choice(name="เชื่อมต่อเข้าห้องเสียงที่อยู่ (Join)", value="join"),
@@ -399,7 +474,7 @@ async def help_command(interaction: discord.Interaction):
         description="นี่คือรายการคำสั่ง Slash Commands ทั้งหมดในระบบ แบ่งตามหมวดหมู่การใช้งานครับ:",
         color=0x3498DB
     )
-    embed.add_field(name="🎮 1. หมวดเกมและระบบพิเศษ", value="• `/roblox` - ตรวจสอบสถานะการอัปเดตเวอร์ชัน Roblox แบบเรียลไทม์ (เขียว/เหลือง)\n• `/voicechat` - สั่งให้บอทเข้าหรือออกจากห้องเสียงที่คุณอยู่", inline=False)
+    embed.add_field(name="🎮 1. หมวดเกมและระบบพิเศษ", value="• `/roblox` - ตรวจสอบสถานะการอัปเดตเวอร์ชัน Roblox แบบเรียลไทม์\n• `/set-roblox-channel` - กำหนดห้องแจ้งเตือนอัปเดต Roblox อัตโนมัติ (แท็ก @everyone)\n• `/voicechat` - สั่งให้บอทเข้าหรือออกจากห้องเสียงที่คุณอยู่", inline=False)
     embed.add_field(name="🎫 2. หมวดระบบตั๋วและยืนยันตัวตน", value="• `/ticket` - ส่งข้อความเปิดตั๋วติดต่อทีมงาน\n• `/verify` - ส่งข้อความระบบยืนยันตัวตน 6 หลักรับยศ Member", inline=False)
     embed.add_field(name="📜 3. หมวดจัดการเซิร์ฟเวอร์และสถิติ", value="• `/rules` - ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์\n• `/changelog` - สร้างห้องประกาศอัปเดตแบบล็อกห้อง\n• `/invite` - สร้างลิงก์เชิญเข้าเซิร์ฟเวอร์ถาวร\n• `/stats` - สร้างหมวดหมู่แสดงสถิติจำนวนสมาชิก", inline=False)
     embed.add_field(name="🧹 4. หมวดจัดการสมาชิกและข้อความ", value="• `/clear` - ลบข้อความในแชท (1 - 100 ข้อความ)\n• `/ban` - แบนสมาชิกออกจากเซิร์ฟเวอร์", inline=False)
@@ -495,7 +570,7 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🎮 **เพิ่มคำสั่ง /roblox:** เช็กสถานะอัปเดต Roblox แบบเรียลไทม์ (ไฟเขียว/ไฟเหลือง)\n"
+                "• 🎮 **เพิ่มคำสั่ง /set-roblox-channel:** ตั้งห้องแจ้งเตือนอัปเดต Roblox อัตโนมัติพร้อมแท็ก @everyone\n"
                 "• 🛡️ **ยกระดับ Anti-System:** ระบบป้องกันลิงก์ สแปม และนุกเกอร์ทำงานจริง 100%\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
