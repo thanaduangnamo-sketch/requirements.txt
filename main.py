@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules & Invite System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite & Stats System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -22,6 +22,7 @@ intents = discord.Intents.default()
 intents.guilds = True
 intents.voice_states = True
 intents.message_content = True
+intents.members = True  # จำเป็นต้องเปิดเพื่อให้บอทนับจำนวนสมาชิกและบอทได้ถูกต้อง
 
 # --- ระบบ Modal สำหรับกรอกรหัสยืนยันตัวตน ---
 class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตัวตน"):
@@ -134,7 +135,7 @@ async def on_ready():
     # ตั้งค่าสถานะจุดสีแดง (DND)
     await bot.change_presence(
         status=discord.Status.dnd, 
-        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Invite 24 ชม.")
+        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Stats 24 ชม.")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
@@ -148,7 +149,7 @@ async def on_ready():
                     await channel.connect()
                     print(f"🔊 Auto-connected to voice channel: {channel.name}")
         except Exception as e:
-            print(f"❌ Failed to auto-connect to voice channel: {e}")
+            print(f"❌ Failed to auto-connected to voice channel: {e}")
 
 # คำสั่ง /join
 @bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
@@ -243,20 +244,17 @@ async def rules(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /invite (สร้างลิงค์เชิญถาวร ไม่มีวันหมดอายุ)
+# คำสั่ง /invite
 @bot.tree.command(name="invite", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร (ไม่มีวันหมดอายุ)")
 async def invite(interaction: discord.Interaction):
     try:
-        # เช็คว่าห้องแชทปัจจุบันอนุญาตให้สร้างลิงค์ไหม หรือดึงจากช่องแรกที่บอทมีสิทธิ์
         target_channel = interaction.channel
         if not hasattr(target_channel, "create_invite"):
-            # ถ้าห้องปัจจุบันสร้างไม่ได้ ให้หาช่องแชทตัวหนังสือช่องแรกในกิลด์
             for c in interaction.guild.text_channels:
                 if c.permissions_for(interaction.guild.me).create_instant_invite:
                     target_channel = c
                     break
 
-        # สร้างลิงค์เชิญ: max_age=0 (ไม่มีวันหมดอายุ), max_uses=0 (ไม่จำกัดจำนวนครั้ง)
         invite_link = await target_channel.create_invite(max_age=0, max_uses=0, unique=True)
 
         embed = discord.Embed(
@@ -273,6 +271,34 @@ async def invite(interaction: discord.Interaction):
         await interaction.response.send_message(embed=embed, ephemeral=False)
     except Exception as e:
         await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการสร้างลิงค์เชิญ: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
+
+# คำสั่ง /stats (สร้างห้องสถิติติดไว้ด้านบนสุดของเซิร์ฟเวอร์เสมอ)
+@bot.tree.command(name="stats", description="📊 สร้างหมวดหมู่และช่องเสียงสถิติเซิร์ฟเวอร์ไว้ด้านบนสุด")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def stats(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+
+    total_members = guild.member_count
+    bots = sum(1 for m in guild.members if m.bot)
+    humans = total_members - bots
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(connect=False, view_channel=True)
+    }
+
+    try:
+        # สร้างหมวดหมู่ (กำหนด position=0 เพื่อให้ไปอยู่ด้านบนสุดของเซิร์ฟเวอร์เสมอ)
+        category = await guild.create_category("📈 · SERVERSTATS · 📈", position=0)
+
+        # สร้างช่องเสียงสถิติทั้ง 3 ช่องเรียงลงมา
+        await guild.create_voice_channel(f"👥 · สมาชิกทั้งหมด : {total_members}", category=category, overwrites=overwrites)
+        await guild.create_voice_channel(f"👤 · สมาชิก : {humans}", category=category, overwrites=overwrites)
+        await guild.create_voice_channel(f"🤖 · บอท : {bots}", category=category, overwrites=overwrites)
+
+        await interaction.followup.send("✅ สร้างห้องสถิติ (Server Stats) ไว้ที่ด้านบนสุดของเซิร์ฟเวอร์เรียบร้อยแล้วครับ!", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: กรุณาตรวจสอบว่าบอทมีสิทธิ์ 'จัดการช่อง (Manage Channels)' หรือไม่", ephemeral=True)
 
 # 3. รันเว็บและบอทพร้อมกัน
 if __name__ == "__main__":
