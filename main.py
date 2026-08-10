@@ -2,6 +2,7 @@ import os
 import random
 import threading
 import time
+import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -12,7 +13,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Settings, Token Modal, Help & Security Protection System is running 24/7!"
+    return "Bot Token Checker & Security Protection System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -67,7 +68,7 @@ class VerifyModal(discord.ui.Modal, title="🛡️ ระบบยืนยั�
         else:
             await interaction.response.send_message("❌ **รหัสยืนยันตัวตนไม่ถูกต้อง!** กรุณากดปุ่มแล้วลองใหม่อีกครั้ง", ephemeral=True)
 
-# --- ระบบ Modal สำหรับกรอก Token ของบอทเพื่อตรวจสอบ ---
+# --- ระบบ Modal สำหรับกรอก Token ของบอทเพื่อตรวจสอบจริง ---
 class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค่าและตรวจสอบ Token บอท"):
     token_input = discord.ui.TextInput(
         label="กรอก Bot Token ของคุณที่นี่",
@@ -80,34 +81,53 @@ class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค�
         await interaction.response.defer(ephemeral=True)
         user_token = self.token_input.value.strip()
 
-        # ซ่อน Token บางส่วนเพื่อความปลอดภัยในการแสดงผล
-        if len(user_token) > 10:
-            masked_token = user_token[:6] + "..." + user_token[-6:]
-        else:
-            masked_token = "******"
+        # ตรวจสอบความถูกต้องของ Token โดยการยิง Request ไปเช็คกับ Discord API ตรงๆ
+        headers = {
+            "Authorization": f"Bot {user_token}"
+        }
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://discord.com/api/v10/users/@me", headers=headers) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    bot_name = data.get("username", "Unknown")
+                    bot_id = data.get("id", "Unknown")
+                    avatar_hash = data.get("avatar")
+                    
+                    if avatar_hash:
+                        bot_avatar_url = f"https://cdn.discordapp.com/avatars/{bot_id}/{avatar_hash}.png?size=1024"
+                    else:
+                        bot_avatar_url = "https://i.pinimg.com/1200x/ec/4c/a4/ec4ca469fe2a2c245010b94099819059.jpg"
 
-        embed = discord.Embed(
-            title="🔑 ผลการตรวจสอบ Token และสถานะบอท",
-            description=(
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "✨ **รายงานข้อมูลระบบ (Token Status Report):**\n"
-                f"• 🤖 **ชื่อบอท:** `{bot.user.name}`\n"
-                f"• 🆔 **Bot ID:** `{bot.user.id}`\n"
-                f"• 🟢 **สถานะการเชื่อมต่อ:** `ใช้งานปกติ (Active)`\n"
-                f"• 🔑 **Token ที่บันทึก:** `{masked_token}`\n"
-                f"• 🌐 **จำนวนเซิร์ฟเวอร์ที่บอทดูแล:** `{len(bot.guilds)} เซิร์ฟเวอร์`\n"
-                "━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=0x2ECC71
-        )
-        embed.set_image(url="https://i.pinimg.com/1200x/ec/4c/a4/ec4ca469fe2a2c245010b94099819059.jpg")
-        embed.set_footer(text=f"ตรวจสอบโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+                    # ซ่อน Token บางส่วนเพื่อความปลอดภัย
+                    if len(user_token) > 10:
+                        masked_token = user_token[:6] + "..." + user_token[-6:]
+                    else:
+                        masked_token = "******"
 
-        try:
-            await interaction.user.send(embed=embed)
-            await interaction.followup.send("✅ บันทึก Token และตรวจสอบข้อมูลสำเร็จ! ระบบได้จัดส่งรายงานส่งตรงเข้าทาง **DM (ข้อความส่วนตัว)** ของคุณแล้วครับ", ephemeral=True)
-        except Exception:
-            await interaction.followup.send("❌ บันทึก Token สำเร็จ แต่ไม่สามารถส่งข้อความหาคุณทาง DM ได้ กรุณาเปิดรับข้อความส่วนตัวจากสมาชิกในเซิร์ฟเวอร์ก่อนครับ", ephemeral=True)
+                    embed = discord.Embed(
+                        title="🔑 ผลการตรวจสอบ Token และสถานะบอท (Validated)",
+                        description=(
+                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                            "✨ **รายงานข้อมูลระบบ (Token Status Report):**\n"
+                            f"• 🤖 **ชื่อบอท:** `{bot_name}`\n"
+                            f"• 🆔 **Bot ID:** `{bot_id}`\n"
+                            f"• 🟢 **สถานะการเชื่อมต่อ:** `ใช้งานปกติ (Valid Token / Active)`\n"
+                            f"• 🔑 **Token ที่ตรวจสอบ:** `{masked_token}`\n"
+                            "━━━━━━━━━━━━━━━━━━━━━━"
+                        ),
+                        color=0x2ECC71
+                    )
+                    embed.set_thumbnail(url=bot_avatar_url)
+                    embed.set_footer(text=f"ตรวจสอบโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+                    try:
+                        await interaction.user.send(embed=embed)
+                        await interaction.followup.send("✅ ตรวจสอบ Token สำเร็จ! ระบบได้จัดส่งผลรายงานจริงส่งตรงเข้าทาง **DM (ข้อความส่วนตัว)** ของคุณแล้วครับ", ephemeral=True)
+                    except Exception:
+                        await interaction.followup.send("❌ ตรวจสอบ Token สำเร็จ แต่ไม่สามารถส่งข้อความหาคุณทาง DM ได้ กรุณาเปิดรับข้อความส่วนตัว (Direct Messages) ก่อนครับ", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ **Token ไม่ถูกต้อง หรือหมดอายุ!** กรุณาตรวจสอบ Token ของคุณใหม่อีกครั้งจาก Discord Developer Portal", ephemeral=True)
 
 # --- ระบบ View ที่มีปุ่มกดเปิด Modal ใส่ Token ---
 class TokenView(discord.ui.View):
@@ -209,7 +229,7 @@ class VoiceBot(commands.Bot):
         self.add_view(VerifyView())
         self.add_view(RulesView())
         self.add_view(ChangelogView())
-        self.add_view(TokenView()) # โหลดปุ่มแบบ Persistent ของระบบ Token
+        self.add_view(TokenView())
         await self.tree.sync()
         print("🚀 Slash commands synced and Persistent Views loaded successfully.")
 
@@ -224,18 +244,6 @@ async def on_ready():
         activity=discord.Game(name="🛡️ ใช้คำสั่ง /help เพื่อดูวิธีใช้งาน")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
-
-    channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
-    if channel_id_str:
-        try:
-            channel_id = int(channel_id_str)
-            channel = bot.get_channel(channel_id)
-            if channel and isinstance(channel, discord.VoiceChannel):
-                if not channel.guild.voice_client:
-                    await channel.connect()
-                    print(f"🔊 Auto-connected to voice channel: {channel.name}")
-        except Exception as e:
-            print(f"❌ Failed to auto-connected to voice channel: {e}")
 
 # --- ระบบตรวจสอบข้อความป้องกัน (Anti-Link & Anti-Spam) ---
 @bot.event
@@ -284,8 +292,9 @@ async def asyncio_sleep_delete(msg, delay):
         pass
 
 # ==========================================
-# --- 1. หมวดระบบเสียง ---
+# --- คำสั่ง Slash Commands ทั้งหมด ---
 # ==========================================
+
 @bot.tree.command(name="voicechat", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่ หรือตั้งค่าการเชื่อมต่อ")
 @app_commands.choices(action=[
     app_commands.Choice(name="เชื่อมต่อเข้าห้องเสียงที่อยู่ (Join)", value="join"),
@@ -314,9 +323,6 @@ async def voicechat(interaction: discord.Interaction, action: str):
         else:
             await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# ==========================================
-# --- 2. หมวดระบบช่วยเหลือ /help ---
-# ==========================================
 @bot.tree.command(name="help", description="📖 แสดงรายการคำสั่งทั้งหมดของบอทแบ่งตามหมวดหมู่")
 async def help_command(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -324,43 +330,13 @@ async def help_command(interaction: discord.Interaction):
         description="นี่คือรายการคำสั่ง Slash Commands ทั้งหมดในระบบ แบ่งตามหมวดหมู่การใช้งานครับ:",
         color=0x3498DB
     )
-    
-    embed.add_field(
-        name="🔊 1. หมวดระบบเสียง",
-        value="• `/voicechat` - สั่งให้บอทเข้าหรือออกจากห้องเสียงที่คุณอยู่",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🎫 2. หมวดระบบตั๋วและยืนยันตัวตน",
-        value="• `/ticket` - ส่งข้อความเปิดตั๋วติดต่อทีมงาน\n• `/verify` - ส่งข้อความระบบยืนยันตัวตน 6 หลักรับยศ Member",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="📜 3. หมวดจัดการเซิร์ฟเวอร์และสถิติ",
-        value="• `/rules` - ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์\n• `/changelog` - สร้างห้องประกาศอัปเดตแบบล็อกห้อง\n• `/invite` - สร้างลิงก์เชิญเข้าเซิร์ฟเวอร์ถาวร\n• `/stats` - สร้างหมวดหมู่แสดงสถิติจำนวนสมาชิก",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🧹 4. หมวดจัดการสมาชิกและข้อความ",
-        value="• `/clear` - ลบข้อความในแชท (1 - 100 ข้อความ)\n• `/ban` - แบนสมาชิกออกจากเซิร์ฟเวอร์",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย",
-        value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว\n• `/check-token` - ส่งข้อความพร้อมปุ่มเปิดหน้าต่างกรอก Token และตรวจเช็กสถานะเข้า DM\n• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
-        inline=False
-    )
-    
+    embed.add_field(name="🔊 1. หมวดระบบเสียง", value="• `/voicechat` - สั่งให้บอทเข้าหรือออกจากห้องเสียงที่คุณอยู่", inline=False)
+    embed.add_field(name="🎫 2. หมวดระบบตั๋วและยืนยันตัวตน", value="• `/ticket` - ส่งข้อความเปิดตั๋วติดต่อทีมงาน\n• `/verify` - ส่งข้อความระบบยืนยันตัวตน 6 หลักรับยศ Member", inline=False)
+    embed.add_field(name="📜 3. หมวดจัดการเซิร์ฟเวอร์และสถิติ", value="• `/rules` - ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์\n• `/changelog` - สร้างห้องประกาศอัปเดตแบบล็อกห้อง\n• `/invite` - สร้างลิงก์เชิญเข้าเซิร์ฟเวอร์ถาวร\n• `/stats` - สร้างหมวดหมู่แสดงสถิติจำนวนสมาชิก", inline=False)
+    embed.add_field(name="🧹 4. หมวดจัดการสมาชิกและข้อความ", value="• `/clear` - ลบข้อความในแชท (1 - 100 ข้อความ)\n• `/ban` - แบนสมาชิกออกจากเซิร์ฟเวอร์", inline=False)
+    embed.add_field(name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย", value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมด\n• `/check-token` - แผงปุ่มกรอก Token และตรวจเช็กสถานะจริงส่งเข้า DM\n• `/anti-link` / `/anti-nuke` / `/anti-spam` - ตั้งค่าระบบป้องกันแยกย่อย", inline=False)
     embed.set_footer(text="💡 พิมพ์เครื่องหมาย / เพื่อเลือกใช้งานคำสั่งต่างๆ ได้เลย", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     await interaction.response.send_message(embed=embed, ephemeral=True)
-
-# ==========================================
-# --- คำสั่งอื่นๆ ของบอท ---
-# ==========================================
 
 @bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงานดีไซน์พิเศษ")
 async def ticket(interaction: discord.Interaction):
@@ -450,9 +426,8 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🔑 **เพิ่มระบบ /check-token พร้อมปุ่มกรอก Token:** ตรวจสอบและส่งผลเข้า DM ส่วนตัว\n"
-                "• 🛡️ **เพิ่มคำสั่ง /settings:** เปิด/ปิดระบบป้องกันทั้งหมดพร้อมกันทีเดียว\n"
-                "• 📖 **เพิ่มคำสั่ง /help:** เมนูคู่มือใช้งานแบ่งตามหมวดหมู่\n\n"
+                "• 🔑 **อัปเกรดระบบ /check-token:** เชื่อมต่อ API ตรวจสอบ Token จริง พร้อมดึงข้อมูลโปรไฟล์บอทส่งเข้า DM\n"
+                "• 🛡️ **เพิ่มคำสั่ง /settings:** เปิด/ปิดระบบป้องกันทั้งหมดพร้อมกันทีเดียว\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
             ),
@@ -485,12 +460,7 @@ async def clear(interaction: discord.Interaction, amount: int):
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e}", ephemeral=True)
 
-# ==========================================
-# --- ระบบป้องกันเซิร์ฟเวอร์ ---
-# ==========================================
-
-# คำสั่ง /check-token (ส่งข้อความพร้อมปุ่มคลิกกรอก Token)
-@bot.tree.command(name="check-token", description="🔑 ส่งแผงควบคุมระบบกรอก Token และตรวจสอบสถานะบอท")
+@bot.tree.command(name="check-token", description="🔑 ส่งแผงควบคุมระบบกรอก Token และตรวจสอบสถานะบอทรอบใหม่")
 @app_commands.checks.has_permissions(administrator=True)
 async def check_token(interaction: discord.Interaction):
     view = TokenView()
@@ -502,7 +472,7 @@ async def check_token(interaction: discord.Interaction):
             "📌 **วิธีใช้งาน:**\n"
             "• กดปุ่ม **'คลิกเพื่อกรอก Token บอท'** ด้านล่างนี้\n"
             "• กรอก Token ของคุณในหน้าต่างที่เด้งขึ้นมา\n"
-            "• ระบบจะตรวจสอบสถานะและส่งผลรายงานพร้อมรูปภาพไปที่ **DM ส่วนตัว** ทันที!\n"
+            "• ระบบจะเช็กกับ Discord API จริง และส่งผลรายงานพร้อมรูปโปรไฟล์บอทไปที่ **DM ส่วนตัว** ทันที!\n"
             "━━━━━━━━━━━━━━━━━━━━━━"
         ),
         color=0x3498DB
@@ -667,4 +637,4 @@ if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ Error: Please set DISORD_TOKEN in environment variables.")
+        print("❌ Error: Please set DISCORD_TOKEN in environment variables.")
