@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear & Security Protection System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Help & Security Protection System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -169,7 +169,7 @@ async def on_ready():
     
     await bot.change_presence(
         status=discord.Status.dnd, 
-        activity=discord.Game(name="🛡️ ระบบป้องกันความปลอดภัยเซิร์ฟเวอร์ 24 ชม.")
+        activity=discord.Game(name="🛡️ ใช้คำสั่ง /help เพื่อดูวิธีใช้งาน")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
@@ -231,34 +231,85 @@ async def asyncio_sleep_delete(msg, delay):
     except Exception:
         pass
 
-# --- คำสั่ง /join ---
-@bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
-async def join(interaction: discord.Interaction):
-    if interaction.user.voice and interaction.user.voice.channel:
-        channel = interaction.user.voice.channel
+# ==========================================
+# --- 1. หมวดระบบเสียง (เหลือ 1 คำสั่งตามต้องการ) ---
+# ==========================================
+@bot.tree.command(name="voicechat", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่ หรือตั้งค่าการเชื่อมต่อ")
+@app_commands.choices(action=[
+    app_commands.Choice(name="เชื่อมต่อเข้าห้องเสียงที่อยู่ (Join)", value="join"),
+    app_commands.Choice(name="ออกจากห้องเสียง (Leave)", value="leave")
+])
+async def voicechat(interaction: discord.Interaction, action: str):
+    if action == "join":
+        if interaction.user.voice and interaction.user.voice.channel:
+            channel = interaction.user.voice.channel
+            voice_client = interaction.guild.voice_client
+            try:
+                if voice_client:
+                    await voice_client.move_to(channel)
+                else:
+                    await channel.connect()
+                await interaction.response.send_message(f'🎧 ดึงบอทเข้าห้อง **{channel.name}** สำเร็จ!', ephemeral=False)
+            except Exception as e:
+                await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
+        else:
+            await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
+    elif action == "leave":
         voice_client = interaction.guild.voice_client
-        try:
-            if voice_client:
-                await voice_client.move_to(channel)
-            else:
-                await channel.connect()
-            await interaction.response.send_message(f'🎧 ดึงบอทเข้าห้อง **{channel.name}** สำเร็จ!', ephemeral=False)
-        except Exception as e:
-            await interaction.response.send_message(f'❌ เกิดข้อผิดพลาด: {e}', ephemeral=True)
-    else:
-        await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
+        if voice_client:
+            await voice_client.disconnect()
+            await interaction.response.send_message('👋 บอทออกจากห้องเสียงเรียบร้อยแล้ว', ephemeral=False)
+        else:
+            await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# --- คำสั่ง /leave ---
-@bot.tree.command(name="leave", description="👋 สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
-async def leave(interaction: discord.Interaction):
-    voice_client = interaction.guild.voice_client
-    if voice_client:
-        await voice_client.disconnect()
-        await interaction.response.send_message('👋 บอทออกจากห้องเสียงเรียบร้อยแล้ว', ephemeral=False)
-    else:
-        await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
+# ==========================================
+# --- 2. หมวดระบบช่วยเหลือ /help (แสดงแบบแบ่งหมวดหมู่) ---
+# ==========================================
+@bot.tree.command(name="help", description="📖 แสดงรายการคำสั่งทั้งหมดของบอทแบ่งตามหมวดหมู่")
+async def help_command(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="📖 คู่มือการใช้งานคำสั่งบอททั้งหมด (Help Menu)",
+        description="นี่คือรายการคำสั่ง Slash Commands ทั้งหมดในระบบ แบ่งตามหมวดหมู่การใช้งานครับ:",
+        color=0x3498DB
+    )
+    
+    embed.add_field(
+        name="🔊 1. หมวดระบบเสียง",
+        value="• `/voicechat` - สั่งให้บอทเข้าหรือออกจากห้องเสียงที่คุณอยู่",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🎫 2. หมวดระบบตั๋วและยืนยันตัวตน",
+        value="• `/ticket` - ส่งข้อความเปิดตั๋วติดต่อทีมงาน\n• `/verify` - ส่งข้อความระบบยืนยันตัวตน 6 หลักรับยศ Member",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📜 3. หมวดจัดการเซิร์ฟเวอร์และสถิติ",
+        value="• `/rules` - ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์\n• `/changelog` - สร้างห้องประกาศอัปเดตแบบล็อกห้อง\n• `/invite` - สร้างลิงก์เชิญเข้าเซิร์ฟเวอร์ถาวร\n• `/stats` - สร้างหมวดหมู่แสดงสถิติจำนวนสมาชิก",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🧹 4. หมวดจัดการสมาชิกและข้อความ",
+        value="• `/clear` - ลบข้อความในแชท (1 - 100 ข้อความ)\n• `/ban` - แบนสมาชิกออกจากเซิร์ฟเวอร์",
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย",
+        value="• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
+        inline=False
+    )
+    
+    embed.set_footer(text="💡 พิมพ์เครื่องหมาย / เพื่อเลือกใช้งานคำสั่งต่างๆ ได้เลย", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
-# --- คำสั่ง /ticket ---
+# ==========================================
+# --- คำสั่งอื่นๆ ของบอท ---
+# ==========================================
+
 @bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงานดีไซน์พิเศษ")
 async def ticket(interaction: discord.Interaction):
     view = TicketView()
@@ -278,7 +329,6 @@ async def ticket(interaction: discord.Interaction):
     embed.set_footer(text="🔒 ระบบซัพพอร์ตความปลอดภัยสูง ตลอด 24 ชม.", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# --- คำสั่ง /verify ---
 @bot.tree.command(name="verify", description="🛡️ ส่งข้อความระบบยืนยันตัวตนดีไซน์พรีเมียม")
 async def verify(interaction: discord.Interaction):
     view = VerifyView()
@@ -299,7 +349,6 @@ async def verify(interaction: discord.Interaction):
     embed.set_footer(text="🔒 ป้องกันบอทและสแปมเข้าเซิร์ฟเวอร์ 100%", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# --- คำสั่ง /rules ---
 @bot.tree.command(name="rules", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์ดีไซน์สวยงาม")
 async def rules(interaction: discord.Interaction):
     view = RulesView()
@@ -323,7 +372,6 @@ async def rules(interaction: discord.Interaction):
     embed.set_footer(text="กรุณาอ่านและปฏิบัติตามอย่างเคร่งครัด", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# --- คำสั่ง /changelog ---
 @bot.tree.command(name="changelog", description="📢 สร้างห้องประกาศอัปเดตแบบล็อกห้อง พร้อมปุ่มรับทราบ")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def changelog(interaction: discord.Interaction):
@@ -350,9 +398,9 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🛡️ **เพิ่มระบบป้องกันเซิร์ฟเวอร์:** `/anti-link`, `/anti-nuke`, `/anti-spam`\n"
-                "• 🔨 **เพิ่มคำสั่ง /ban:** สำหรับแบนผู้ใช้ออกจากเซิร์ฟเวอร์\n"
-                "• 🧹 **เพิ่มคำสั่ง /clear:** ลบข้อความได้อย่างรวดเร็ว\n\n"
+                "• 🔊 รวมคำสั่งเสียงเป็น `/voicechat`\n"
+                "• 📖 เพิ่มคำสั่ง `/help` ดูเมนูแยกหมวดหมู่\n"
+                "• 🛡️ ระบบป้องกันเซิร์ฟเวอร์เต็มรูปแบบ\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
             ),
@@ -365,7 +413,6 @@ async def changelog(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-# --- คำสั่ง /clear ---
 @bot.tree.command(name="clear", description="🧹 ลบข้อความในแชทจำนวนตามที่กำหนด (1 - 100 ข้อความ)")
 @app_commands.describe(amount="จำนวนข้อความที่ต้องการลบ (1-100)")
 @app_commands.checks.has_permissions(manage_messages=True)
@@ -386,7 +433,7 @@ async def clear(interaction: discord.Interaction, amount: int):
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e}", ephemeral=True)
 
-# --- คำสั่งป้องกันเซิร์ฟเวอร์ ---
+# --- ระบบป้องกันเซิร์ฟเวอร์ ---
 @bot.tree.command(name="anti-link", description="🛡️ เปิด/ปิดระบบป้องกันลิ้งก์แปลกปลอมในเซิร์ฟเวอร์")
 @app_commands.choices(status=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
@@ -456,7 +503,6 @@ async def ban(interaction: discord.Interaction, member: discord.Member, reason: 
     except Exception as e:
         await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการแบน: {e}", ephemeral=True)
 
-# --- คำสั่ง /invite ---
 @bot.tree.command(name="invite", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร")
 async def invite(interaction: discord.Interaction):
     try:
@@ -484,7 +530,6 @@ async def invite(interaction: discord.Interaction):
     except Exception as e:
         await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
 
-# --- คำสั่ง /stats ---
 @bot.tree.command(name="stats", description="📊 สร้างหมวดหมู่และช่องเสียงสถิติเซิร์ฟเวอร์ไว้ด้านบนสุด")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def stats(interaction: discord.Interaction):
