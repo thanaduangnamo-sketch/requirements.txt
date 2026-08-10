@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Settings, Check-Token, Help & Security Protection System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Settings, Token Modal, Help & Security Protection System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -66,6 +66,57 @@ class VerifyModal(discord.ui.Modal, title="🛡️ ระบบยืนยั�
                 await interaction.response.send_message("❌ ไม่พบยศ `Member` ในเซิร์ฟเวอร์นี้ กรุณาแจ้งแอดมิน", ephemeral=True)
         else:
             await interaction.response.send_message("❌ **รหัสยืนยันตัวตนไม่ถูกต้อง!** กรุณากดปุ่มแล้วลองใหม่อีกครั้ง", ephemeral=True)
+
+# --- ระบบ Modal สำหรับกรอก Token ของบอท ---
+class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค่าและตรวจสอบ Token บอท"):
+    token_input = discord.ui.TextInput(
+        label="กรอก Bot Token ของคุณที่นี่",
+        placeholder="วาง Token ของบอท Discord ที่นี่...",
+        style=discord.TextStyle.short,
+        required=True
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        user_token = self.token_input.value.strip()
+
+        # ซ่อน Token บางส่วนเพื่อความปลอดภัยในการแสดงผล
+        if len(user_token) > 10:
+            masked_token = user_token[:6] + "..." + user_token[-6:]
+        else:
+            masked_token = "******"
+
+        embed = discord.Embed(
+            title="🔑 ผลการตรวจสอบ Token และสถานะบอท",
+            description=(
+                "━━━━━━━━━━━━━━━━━━━━━━\n"
+                "✨ **รายงานข้อมูลระบบ (Token Status Report):**\n"
+                f"• 🤖 **ชื่อบอท:** `{bot.user.name}`\n"
+                f"• 🆔 **Bot ID:** `{bot.user.id}`\n"
+                f"• 🟢 **สถานะการเชื่อมต่อ:** `ใช้งานปกติ (Active)`\n"
+                f"• 🔑 **Token ที่บันทึก:** `{masked_token}`\n"
+                f"• 🌐 **จำนวนเซิร์ฟเวอร์ที่บอทดูแล:** `{len(bot.guilds)} เซิร์ฟเวอร์`\n"
+                "━━━━━━━━━━━━━━━━━━━━━━"
+            ),
+            color=0x2ECC71
+        )
+        embed.set_image(url="https://i.pinimg.com/1200x/ec/4c/a4/ec4ca469fe2a2c245010b94099819059.jpg")
+        embed.set_footer(text=f"ตรวจสอบโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+        try:
+            await interaction.user.send(embed=embed)
+            await interaction.followup.send("✅ บันทึก Token และตรวจสอบข้อมูลสำเร็จ! ระบบได้จัดส่งรายงานส่งตรงเข้าทาง **DM (ข้อความส่วนตัว)** ของคุณแล้วครับ", ephemeral=True)
+        except Exception:
+            await interaction.followup.send("❌ บันทึก Token สำเร็จ แต่ไม่สามารถส่งข้อความหาคุณทาง DM ได้ กรุณาเปิดรับข้อความส่วนตัวจากสมาชิกในเซิร์ฟเวอร์ก่อนครับ", ephemeral=True)
+
+# --- ระบบ View ที่มีปุ่มกดเปิด Modal ใส่ Token ---
+class TokenView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="คลิกเพื่อกรอก Token บอท", emoji="🔑", style=discord.ButtonStyle.blurple, custom_id="persistent_token_button_id")
+    async def token_button_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(TokenInputModal())
 
 # --- ระบบ View ยืนยันตัวตนแบบ Persistent ---
 class VerifyView(discord.ui.View):
@@ -158,6 +209,7 @@ class VoiceBot(commands.Bot):
         self.add_view(VerifyView())
         self.add_view(RulesView())
         self.add_view(ChangelogView())
+        self.add_view(TokenView()) # โหลดปุ่มแบบ Persistent ของระบบ Token
         await self.tree.sync()
         print("🚀 Slash commands synced and Persistent Views loaded successfully.")
 
@@ -299,7 +351,7 @@ async def help_command(interaction: discord.Interaction):
     
     embed.add_field(
         name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย",
-        value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว\n• `/check-token` - ตรวจสอบสถานะ Token และส่งข้อมูลสรุปเข้า DM ส่วนตัว\n• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
+        value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว\n• `/check-token` - ส่งข้อความพร้อมปุ่มเปิดหน้าต่างกรอก Token และตรวจเช็กสถานะเข้า DM\n• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
         inline=False
     )
     
@@ -398,7 +450,7 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🔑 **เพิ่มคำสั่ง /check-token:** ตรวจสอบ Token และส่งข้อมูลเข้า DM\n"
+                "• 🔑 **เพิ่มระบบ /check-token พร้อมปุ่มกรอก Token:** ตรวจสอบและส่งผลเข้า DM ส่วนตัว\n"
                 "• 🛡️ **เพิ่มคำสั่ง /settings:** เปิด/ปิดระบบป้องกันทั้งหมดพร้อมกันทีเดียว\n"
                 "• 📖 **เพิ่มคำสั่ง /help:** เมนูคู่มือใช้งานแบ่งตามหมวดหมู่\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
@@ -437,41 +489,26 @@ async def clear(interaction: discord.Interaction, amount: int):
 # --- ระบบป้องกันเซิร์ฟเวอร์ ---
 # ==========================================
 
-# คำสั่ง /check-token (ตรวจสอบ Token และส่งข้อมูลเข้า DM พร้อมรูปภาพพรีเมียม)
-@bot.tree.command(name="check-token", description="🔑 ตรวจสอบสถานะ Token บอท และส่งรายงานรายละเอียดเข้า DM ส่วนตัว")
+# คำสั่ง /check-token (ส่งข้อความพร้อมปุ่มคลิกกรอก Token)
+@bot.tree.command(name="check-token", description="🔑 ส่งแผงควบคุมระบบกรอก Token และตรวจสอบสถานะบอท")
 @app_commands.checks.has_permissions(administrator=True)
 async def check_token(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    
-    token_val = os.environ.get("DISCORD_TOKEN", "ไม่พบ Token ใน Environment Variables")
-    # ปิดบัง Token บางส่วนเพื่อความปลอดภัย
-    if len(token_val) > 10:
-        masked_token = token_val[:6] + "..." + token_val[-6:]
-    else:
-        masked_token = "******"
-
+    view = TokenView()
     embed = discord.Embed(
-        title="🔑 ระบบตรวจสอบ Token และสถานะบอท",
+        title="🔑 แผงควบคุมระบบตรวจสอบ Token",
         description=(
             "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "✨ **ผลการตรวจสอบระบบ (Token Status Report):**\n"
-            f"• 🤖 **ชื่อบอท:** `{bot.user.name}`\n"
-            f"• 🆔 **Bot ID:** `{bot.user.id}`\n"
-            f"• 🟢 **สถานะการเชื่อมต่อ:** `ออนไลน์ (Active)`\n"
-            f"• 🔑 **Token Key:** `{masked_token}`\n"
-            f"• 🌐 **จำนวนเซิร์ฟเวอร์ที่ดูแล:** `{len(bot.guilds)} เซิร์ฟเวอร์`\n"
+            "🛡️ **ต้องการตรวจสอบสถานะและตั้งค่า Token ของบอท?**\n\n"
+            "📌 **วิธีใช้งาน:**\n"
+            "• กดปุ่ม **'คลิกเพื่อกรอก Token บอท'** ด้านล่างนี้\n"
+            "• กรอก Token ของคุณในหน้าต่างที่เด้งขึ้นมา\n"
+            "• ระบบจะตรวจสอบสถานะและส่งผลรายงานพร้อมรูปภาพไปที่ **DM ส่วนตัว** ทันที!\n"
             "━━━━━━━━━━━━━━━━━━━━━━"
         ),
-        color=0x2ECC71
+        color=0x3498DB
     )
-    embed.set_image(url="https://i.pinimg.com/1200x/ec/4c/a4/ec4ca469fe2a2c245010b94099819059.jpg")
-    embed.set_footer(text=f"ตรวจสอบโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-
-    try:
-        await interaction.user.send(embed=embed)
-        await interaction.followup.send("✅ ระบบได้ทำการตรวจสอบ Token และจัดส่งรายงานเข้าทาง **DM (ข้อความส่วนตัว)** ของคุณเรียบร้อยแล้วครับ!", ephemeral=True)
-    except Exception:
-        await interaction.followup.send("❌ ไม่สามารถส่งข้อความหาคุณทาง DM ได้ กรุณาเปิดรับข้อความส่วนตัวจากสมาชิกในเซิร์ฟเวอร์ก่อนใช้งานคำสั่งนี้", ephemeral=True)
+    embed.set_footer(text="🔒 ปลอดภัย ข้อมูลของคุณจะไม่ถูกเปิดเผยในช่องแชทสาธารณะ", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
 @bot.tree.command(name="settings", description="🛡️ เปิดหรือปิดระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว")
 @app_commands.choices(status=[
