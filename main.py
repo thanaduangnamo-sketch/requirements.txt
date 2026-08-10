@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Help & Security Protection System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Settings, Help & Security Protection System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -232,7 +232,7 @@ async def asyncio_sleep_delete(msg, delay):
         pass
 
 # ==========================================
-# --- 1. หมวดระบบเสียง (เหลือ 1 คำสั่งตามต้องการ) ---
+# --- 1. หมวดระบบเสียง ---
 # ==========================================
 @bot.tree.command(name="voicechat", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่ หรือตั้งค่าการเชื่อมต่อ")
 @app_commands.choices(action=[
@@ -263,7 +263,7 @@ async def voicechat(interaction: discord.Interaction, action: str):
             await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
 # ==========================================
-# --- 2. หมวดระบบช่วยเหลือ /help (แสดงแบบแบ่งหมวดหมู่) ---
+# --- 2. หมวดระบบช่วยเหลือ /help ---
 # ==========================================
 @bot.tree.command(name="help", description="📖 แสดงรายการคำสั่งทั้งหมดของบอทแบ่งตามหมวดหมู่")
 async def help_command(interaction: discord.Interaction):
@@ -299,7 +299,7 @@ async def help_command(interaction: discord.Interaction):
     
     embed.add_field(
         name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย",
-        value="• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
+        value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว\n• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
         inline=False
     )
     
@@ -398,9 +398,9 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🔊 รวมคำสั่งเสียงเป็น `/voicechat`\n"
-                "• 📖 เพิ่มคำสั่ง `/help` ดูเมนูแยกหมวดหมู่\n"
-                "• 🛡️ ระบบป้องกันเซิร์ฟเวอร์เต็มรูปแบบ\n\n"
+                "• 🛡️ **เพิ่มคำสั่ง /settings:** เปิด/ปิดระบบป้องกันทั้งหมดพร้อมกันทีเดียว\n"
+                "• 📖 **เพิ่มคำสั่ง /help:** เมนูคู่มือใช้งานแบ่งตามหมวดหมู่\n"
+                "• 🔊 **ปรับปรุง /voicechat:** รวมคำสั่งเสียงให้ใช้งานง่ายขึ้น\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
             ),
@@ -433,7 +433,40 @@ async def clear(interaction: discord.Interaction, amount: int):
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e}", ephemeral=True)
 
+# ==========================================
 # --- ระบบป้องกันเซิร์ฟเวอร์ ---
+# ==========================================
+
+# คำสั่ง /settings (เปิด/ปิดระบบป้องกันทั้งหมดทีเดียวพร้อมกัน)
+@bot.tree.command(name="settings", description="🛡️ เปิดหรือปิดระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว")
+@app_commands.choices(status=[
+    app_commands.Choice(name="เปิดระบบป้องกันทั้งหมด (Enable All)", value="on"),
+    app_commands.Choice(name="ปิดระบบป้องกันทั้งหมด (Disable All)", value="off")
+])
+@app_commands.checks.has_permissions(administrator=True)
+async def settings(interaction: discord.Interaction, status: str):
+    guild_id = interaction.guild.id
+    is_on = (status == "on")
+    
+    # ตั้งค่าเปิด/ปิดทั้ง 3 ระบบพร้อมกัน
+    ant_settings["anti_link"][guild_id] = is_on
+    ant_settings["anti_nuke"][guild_id] = is_on
+    ant_settings["anti_spam"][guild_id] = is_on
+
+    embed = discord.Embed(
+        title="🛡️ ตั้งค่าระบบป้องกันความปลอดภัยเซิร์ฟเวอร์",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"สถานะระบบทั้งหมด: **{'🟢 เปิดใช้งานทั้งหมดแล้ว' if is_on else '🔴 ปิดการใช้งานทั้งหมดแล้ว'}**\n\n"
+            "• 🛡️ **Anti-Link (ป้องกันลิงก์):** " + ("`เปิด`" if is_on else "`ปิด`") + "\n"
+            "• 🛡️ **Anti-Nuke (ป้องกันทำลายเซิร์ฟเวอร์):** " + ("`เปิด`" if is_on else "`ปิด`") + "\n"
+            "• 🛡️ **Anti-Spam (ป้องกันสแปมแชท):** " + ("`เปิด`" if is_on else "`ปิด`") + "\n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=0x2ECC71 if is_on else 0xE74C3C
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
 @bot.tree.command(name="anti-link", description="🛡️ เปิด/ปิดระบบป้องกันลิ้งก์แปลกปลอมในเซิร์ฟเวอร์")
 @app_commands.choices(status=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
