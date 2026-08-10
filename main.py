@@ -67,7 +67,7 @@ class VerifyModal(discord.ui.Modal, title="🛡️ ระบบยืนยั�
         else:
             await interaction.response.send_message("❌ **รหัสยืนยันตัวตนไม่ถูกต้อง!** กรุณากดปุ่มแล้วลองใหม่อีกครั้ง", ephemeral=True)
 
-# --- ระบบ Modal สำหรับกรอก Token ของบอท ---
+# --- ระบบ Modal สำหรับกรอก Token ของบอทเพื่อตรวจสอบ ---
 class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค่าและตรวจสอบ Token บอท"):
     token_input = discord.ui.TextInput(
         label="กรอก Bot Token ของคุณที่นี่",
