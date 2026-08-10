@@ -132,7 +132,7 @@ class RulesView(discord.ui.View):
     async def rules_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("✅ ขอบคุณที่อ่านและยอมรับกฎของเซิร์ฟเวอร์เราครับ ขอให้สนุก!", ephemeral=True)
 
-# --- ระบบ View สำหรับ Changelog ---
+# --- ระบบ View สำหรับ Changelog แบบ Persistent ---
 class ChangelogView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -193,11 +193,9 @@ async def on_message(message):
 
     guild_id = message.guild.id
     user_id = message.author.id
-
-    # ตรวจสอบสิทธิ์ว่าไม่ใช่แอดมิน (แอดมินส่งได้ปกติ)
     is_admin = message.author.guild_permissions.manage_messages
 
-    # 1. ระบบ Anti-Link (ป้องกันการส่งลิงก์)
+    # 1. ระบบ Anti-Link
     if not is_admin and ant_settings["anti_link"].get(guild_id, False):
         if "http://" in message.content or "https://" in message.content or "discord.gg/" in message.content:
             try:
@@ -208,12 +206,12 @@ async def on_message(message):
                 pass
             return
 
-    # 2. ระบบ Anti-Spam (ป้องกันการพิมพ์รัว)
+    # 2. ระบบ Anti-Spam
     if not is_admin and ant_settings["anti_spam"].get(guild_id, False):
         current_time = time.time()
         if user_id in spam_tracker:
             last_time = spam_tracker[user_id]
-            if current_time - last_time < 1.5:  # ถ้ารัวข้อความภายใน 1.5 วินาที
+            if current_time - last_time < 1.5:
                 try:
                     await message.delete()
                     warning = await message.channel.send(f"⚠️ {message.author.mention} **กรุณาอย่าสแปมข้อความ!**")
@@ -231,14 +229,6 @@ async def asyncio_sleep_delete(msg, delay):
     try:
         await msg.delete()
     except Exception:
-        pass
-
-# 3. ระบบ Anti-Nuke (ป้องกันการลบห้อง/แบนรัวๆ โดยไม่ได้รับอนุญาต)
-@bot.event
-async def on_guild_channel_delete(channel):
-    guild_id = channel.guild.id
-    if ant_settings["anti_nuke"].get(guild_id, False):
-        # หากมีการเปิด Anti-Nuke สามารถเพิ่มระบบบล็อกหรือแจ้งเตือนเจ้าของเซิร์ฟเวอร์ตรงนี้ได้
         pass
 
 # --- คำสั่ง /join ---
@@ -396,11 +386,7 @@ async def clear(interaction: discord.Interaction, amount: int):
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e}", ephemeral=True)
 
-# ==========================================
-# --- คำสั่งป้องกันเซิร์ฟเวอร์ใหม่ตามรูปภาพ ---
-# ==========================================
-
-# 1. คำสั่ง /anti-link
+# --- คำสั่งป้องกันเซิร์ฟเวอร์ ---
 @bot.tree.command(name="anti-link", description="🛡️ เปิด/ปิดระบบป้องกันลิ้งก์แปลกปลอมในเซิร์ฟเวอร์")
 @app_commands.choices(status=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
@@ -419,7 +405,6 @@ async def anti_link(interaction: discord.Interaction, status: str):
     )
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
-# 2. คำสั่ง /anti-nuke
 @bot.tree.command(name="anti-nuke", description="🛡️ เปิด/ปิดระบบป้องกัน Nuker / ป้องกันการทำลายเซิร์ฟเวอร์")
 @app_commands.choices(status=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
@@ -438,7 +423,6 @@ async def anti_nuke(interaction: discord.Interaction, status: str):
     )
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
-# 3. คำสั่ง /anti-spam
 @bot.tree.command(name="anti-spam", description="🛡️ เปิด/ปิดระบบป้องกันสแปมข้อความรัวๆ")
 @app_commands.choices(status=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
@@ -457,7 +441,6 @@ async def anti_spam(interaction: discord.Interaction, status: str):
     )
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
-# 4. คำสั่ง /ban (แบนสมาชิกออกจากเซิร์ฟเวอร์)
 @bot.tree.command(name="ban", description="🔨 แบนสมาชิกออกจากเซิร์ฟเวอร์")
 @app_commands.describe(member="สมาชิกที่ต้องการแบน", reason="เหตุผลในการแบน")
 @app_commands.checks.has_permissions(ban_members=True)
