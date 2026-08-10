@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification & Rules System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules & Invite System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -121,7 +121,7 @@ class VoiceBot(commands.Bot):
     async def setup_hook(self):
         self.add_view(TicketView())
         self.add_view(VerifyView())
-        self.add_view(RulesView()) # ลงทะเบียนปุ่มกฎประจำเซิร์ฟเวอร์ให้กดได้ตลอด
+        self.add_view(RulesView())
         await self.tree.sync()
         print("🚀 Slash commands synced and Persistent Views loaded successfully.")
 
@@ -134,7 +134,7 @@ async def on_ready():
     # ตั้งค่าสถานะจุดสีแดง (DND)
     await bot.change_presence(
         status=discord.Status.dnd, 
-        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Rules 24 ชม.")
+        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Invite 24 ชม.")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
@@ -219,7 +219,7 @@ async def verify(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /rules (กฎประจำเซิร์ฟเวอร์)
+# คำสั่ง /rules
 @bot.tree.command(name="rules", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์")
 async def rules(interaction: discord.Interaction):
     view = RulesView()
@@ -237,11 +237,42 @@ async def rules(interaction: discord.Interaction):
             "> การตัดสินใจของแอดมินถือเป็นที่สิ้นสุดในทุกกรณี\n\n"
             "⚠️ *หากฝ่าฝืนกฎ มีโทษตั้งแต่ตักเตือนจนถึงแบนออกจากเซิร์ฟเวอร์*"
         ),
-        color=0xE74C3C # สีแดงเข้ากับสถานะบอท
+        color=0xE74C3C
     )
     embed.set_footer(text="กรุณาอ่านและปฏิบัติตามอย่างเคร่งครัด", icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+
+# คำสั่ง /invite (สร้างลิงค์เชิญถาวร ไม่มีวันหมดอายุ)
+@bot.tree.command(name="invite", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร (ไม่มีวันหมดอายุ)")
+async def invite(interaction: discord.Interaction):
+    try:
+        # เช็คว่าห้องแชทปัจจุบันอนุญาตให้สร้างลิงค์ไหม หรือดึงจากช่องแรกที่บอทมีสิทธิ์
+        target_channel = interaction.channel
+        if not hasattr(target_channel, "create_invite"):
+            # ถ้าห้องปัจจุบันสร้างไม่ได้ ให้หาช่องแชทตัวหนังสือช่องแรกในกิลด์
+            for c in interaction.guild.text_channels:
+                if c.permissions_for(interaction.guild.me).create_instant_invite:
+                    target_channel = c
+                    break
+
+        # สร้างลิงค์เชิญ: max_age=0 (ไม่มีวันหมดอายุ), max_uses=0 (ไม่จำกัดจำนวนครั้ง)
+        invite_link = await target_channel.create_invite(max_age=0, max_uses=0, unique=True)
+
+        embed = discord.Embed(
+            title="🔗 ลิงค์เชิญเข้าสู่เซิร์ฟเวอร์ถาวร",
+            description=(
+                f"คุณสามารถคัดลอกลิงค์ด้านล่างนี้ไปชวนเพื่อนๆ เข้าเซิร์ฟเวอร์ได้เลยครับ!\n\n"
+                f"👉 **{invite_link.url}**\n\n"
+                f"📌 *ลิงค์นี้ไม่มีวันหมดอายุและใช้งานได้ไม่จำกัดจำนวนครั้ง*"
+            ),
+            color=0x2ECC71
+        )
+        embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการสร้างลิงค์เชิญ: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
 
 # 3. รันเว็บและบอทพร้อมกัน
 if __name__ == "__main__":
@@ -252,4 +283,4 @@ if __name__ == "__main__":
     if TOKEN:
         bot.run(TOKEN)
     else:
-        print("❌ Error: Please set DISCORD_TOKEN in environment variables.")
+        print("❌ Error: Please set DISORD_TOKEN in environment variables.")
