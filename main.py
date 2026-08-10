@@ -12,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Settings, Help & Security Protection System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear, Settings, Check-Token, Help & Security Protection System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -299,7 +299,7 @@ async def help_command(interaction: discord.Interaction):
     
     embed.add_field(
         name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย",
-        value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว\n• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
+        value="• `/settings` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว\n• `/check-token` - ตรวจสอบสถานะ Token และส่งข้อมูลสรุปเข้า DM ส่วนตัว\n• `/anti-link` - เปิด/ปิด ระบบป้องกันการส่งลิงก์แปลกปลอม\n• `/anti-nuke` - เปิด/ปิด ระบบป้องกัน Nuker เซิร์ฟเวอร์\n• `/anti-spam` - เปิด/ปิด ระบบป้องกันสแปมข้อความรัว",
         inline=False
     )
     
@@ -398,9 +398,9 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
+                "• 🔑 **เพิ่มคำสั่ง /check-token:** ตรวจสอบ Token และส่งข้อมูลเข้า DM\n"
                 "• 🛡️ **เพิ่มคำสั่ง /settings:** เปิด/ปิดระบบป้องกันทั้งหมดพร้อมกันทีเดียว\n"
-                "• 📖 **เพิ่มคำสั่ง /help:** เมนูคู่มือใช้งานแบ่งตามหมวดหมู่\n"
-                "• 🔊 **ปรับปรุง /voicechat:** รวมคำสั่งเสียงให้ใช้งานง่ายขึ้น\n\n"
+                "• 📖 **เพิ่มคำสั่ง /help:** เมนูคู่มือใช้งานแบ่งตามหมวดหมู่\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
             ),
@@ -437,7 +437,42 @@ async def clear(interaction: discord.Interaction, amount: int):
 # --- ระบบป้องกันเซิร์ฟเวอร์ ---
 # ==========================================
 
-# คำสั่ง /settings (เปิด/ปิดระบบป้องกันทั้งหมดทีเดียวพร้อมกัน)
+# คำสั่ง /check-token (ตรวจสอบ Token และส่งข้อมูลเข้า DM พร้อมรูปภาพพรีเมียม)
+@bot.tree.command(name="check-token", description="🔑 ตรวจสอบสถานะ Token บอท และส่งรายงานรายละเอียดเข้า DM ส่วนตัว")
+@app_commands.checks.has_permissions(administrator=True)
+async def check_token(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    
+    token_val = os.environ.get("DISCORD_TOKEN", "ไม่พบ Token ใน Environment Variables")
+    # ปิดบัง Token บางส่วนเพื่อความปลอดภัย
+    if len(token_val) > 10:
+        masked_token = token_val[:6] + "..." + token_val[-6:]
+    else:
+        masked_token = "******"
+
+    embed = discord.Embed(
+        title="🔑 ระบบตรวจสอบ Token และสถานะบอท",
+        description=(
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "✨ **ผลการตรวจสอบระบบ (Token Status Report):**\n"
+            f"• 🤖 **ชื่อบอท:** `{bot.user.name}`\n"
+            f"• 🆔 **Bot ID:** `{bot.user.id}`\n"
+            f"• 🟢 **สถานะการเชื่อมต่อ:** `ออนไลน์ (Active)`\n"
+            f"• 🔑 **Token Key:** `{masked_token}`\n"
+            f"• 🌐 **จำนวนเซิร์ฟเวอร์ที่ดูแล:** `{len(bot.guilds)} เซิร์ฟเวอร์`\n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=0x2ECC71
+    )
+    embed.set_image(url="https://i.pinimg.com/1200x/ec/4c/a4/ec4ca469fe2a2c245010b94099819059.jpg")
+    embed.set_footer(text=f"ตรวจสอบโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+
+    try:
+        await interaction.user.send(embed=embed)
+        await interaction.followup.send("✅ ระบบได้ทำการตรวจสอบ Token และจัดส่งรายงานเข้าทาง **DM (ข้อความส่วนตัว)** ของคุณเรียบร้อยแล้วครับ!", ephemeral=True)
+    except Exception:
+        await interaction.followup.send("❌ ไม่สามารถส่งข้อความหาคุณทาง DM ได้ กรุณาเปิดรับข้อความส่วนตัวจากสมาชิกในเซิร์ฟเวอร์ก่อนใช้งานคำสั่งนี้", ephemeral=True)
+
 @bot.tree.command(name="settings", description="🛡️ เปิดหรือปิดระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว")
 @app_commands.choices(status=[
     app_commands.Choice(name="เปิดระบบป้องกันทั้งหมด (Enable All)", value="on"),
@@ -448,7 +483,6 @@ async def settings(interaction: discord.Interaction, status: str):
     guild_id = interaction.guild.id
     is_on = (status == "on")
     
-    # ตั้งค่าเปิด/ปิดทั้ง 3 ระบบพร้อมกัน
     ant_settings["anti_link"][guild_id] = is_on
     ant_settings["anti_nuke"][guild_id] = is_on
     ant_settings["anti_spam"][guild_id] = is_on
