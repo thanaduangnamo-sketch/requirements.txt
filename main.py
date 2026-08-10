@@ -1,4 +1,5 @@
 import os
+import random
 import threading
 import discord
 from discord import app_commands
@@ -10,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot & Ticket System is running 24/7!"
+    return "Voice Bot, Ticket & Verification System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -22,10 +23,55 @@ intents.guilds = True
 intents.voice_states = True
 intents.message_content = True
 
-# สร้างคลาสสำหรับจัดการปุ่มแบบถาวร (Persistent View) เพื่อให้ปุ่มเก่าไม่พังเวลาอัปเดตโค้ด
+# --- ระบบ Modal สำหรับกรอกรหัสยืนยันตัวตน ---
+class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตัวตน"):
+    code_input = discord.ui.TextInput(
+        label="กรุณากรอกรหัส 6 หลักที่แสดงด้านล่าง",
+        placeholder="เช่น 123456",
+        max_length=6,
+        min_length=6,
+        required=True
+    )
+
+    def __init__(self, expected_code: str):
+        super().__init__()
+        self.expected_code = expected_code
+
+    async def on_submit(self, interaction: discord.Interaction):
+        if self.code_input.value.strip() == self.expected_code:
+            guild = interaction.guild
+            member = interaction.user
+            
+            # ค้นหายศ Member (เปลี่ยนชื่อยศในเครื่องหมายคำพูดได้ตามต้องการ)
+            role = discord.utils.get(guild.roles, name="Member")
+            
+            if role:
+                try:
+                    await member.add_roles(role)
+                    await interaction.response.send_message("✅ ยืนยันตัวตนสำเร็จ! คุณได้รับยศ Member เรียบร้อยแล้วครับ 🎉", ephemeral=True)
+                except Exception as e:
+                    await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการมอบยศ: {e}", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ ไม่พบยศ 'Member' ในเซิร์ฟเวอร์นี้ กรุณาแจ้งแอดมิน", ephemeral=True)
+        else:
+            await interaction.response.send_message("❌ รหัสยืนยันตัวตนไม่ถูกต้อง! กรุณาลองใหม่อีกครั้ง", ephemeral=True)
+
+# --- ระบบ View ยืนยันตัวตนแบบ Persistent (ปุ่มไม่พังเวลาบอทรีสตาร์ท) ---
+class VerifyView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="ยืนยันตัวตน", emoji="✅", style=discord.ButtonStyle.green, custom_id="persistent_verify_button_id")
+    async def verify_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        random_code = str(random.randint(100000, 999999))
+        modal = VerifyModal(expected_code=random_code)
+        modal.code_input.label = f"กรอกรหัส 6 หลักนี้: {random_code}"
+        await interaction.response.send_modal(modal)
+
+# --- ระบบ View สำหรับ Ticket แบบ Persistent ---
 class TicketView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None) # timeout=None ทำให้ปุ่มกดได้ตลอดไปไม่มีวันหมดอายุ
+        super().__init__(timeout=None)
 
     @discord.ui.button(label="OPEN TICKET", emoji="🎫", style=discord.ButtonStyle.blurple, custom_id="persistent_ticket_button_id")
     async def ticket_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -65,10 +111,11 @@ class VoiceBot(commands.Bot):
         super().__init__(command_prefix='!', intents=intents)
 
     async def setup_hook(self):
-        # ลงทะเบียน Persistent View ล่วงหน้าเพื่อให้บอทจดจำปุ่มเก่าในแชทได้ทันทีที่เปิดเครื่อง
+        # ลงทะเบียนปุ่มถาวรทั้งหมดเพื่อให้ปุ่มเก่าในแชทใช้งานได้ปกติ
         self.add_view(TicketView())
+        self.add_view(VerifyView())
         await self.tree.sync()
-        print("🚀 Slash commands synced and Persistent View loaded successfully.")
+        print("🚀 Slash commands synced and Persistent Views loaded successfully.")
 
 bot = VoiceBot()
 
@@ -76,14 +123,14 @@ bot = VoiceBot()
 async def on_ready():
     print(f'✅ Logged in as {bot.user.name} (ID: {bot.user.id})')
     
-    # กำหนดจุดสีสถานะของบอทให้เป็นสีเทา (Invisible) ค้างไว้ตลอดเวลา
+    # ตั้งค่าสถานะออนไลน์เป็นจุดสีเทา (Invisible)
     await bot.change_presence(
         status=discord.Status.invisible, 
-        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Ticket 24 ชม.")
+        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Verify 24 ชม.")
     )
     print("⚪ Bot status set to Invisible (Gray Dot).")
 
-    # ระบบเข้าห้องเสียงอัตโนมัติ
+    # เชื่อมต่อห้องเสียงอัตโนมัติ
     channel_id_str = os.environ.get("VOICE_CHANNEL_ID")
     if channel_id_str:
         try:
@@ -96,7 +143,9 @@ async def on_ready():
         except Exception as e:
             print(f"❌ Failed to auto-connect to voice channel: {e}")
 
-# คำสั่ง /join
+# ---------------------------------------------------------
+# คำสั่งที่ 1: /join (ดึงบอทเข้าห้องเสียง)
+# ---------------------------------------------------------
 @bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
 async def join(interaction: discord.Interaction):
     if interaction.user.voice and interaction.user.voice.channel:
@@ -113,7 +162,9 @@ async def join(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
 
-# คำสั่ง /leave
+# ---------------------------------------------------------
+# คำสั่งที่ 2: /leave (ให้บอทออกจากห้องเสียง)
+# ---------------------------------------------------------
 @bot.tree.command(name="leave", description="👋 สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
 async def leave(interaction: discord.Interaction):
     voice_client = interaction.guild.voice_client
@@ -123,7 +174,9 @@ async def leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# คำสั่ง /ticket
+# ---------------------------------------------------------
+# คำสั่งที่ 3: /ticket (ระบบเปิดตั๋ว + รูป Pinterest)
+# ---------------------------------------------------------
 @bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋ว Ticket สำหรับสมาชิกทุกคน")
 async def ticket(interaction: discord.Interaction):
     view = TicketView()
@@ -147,7 +200,27 @@ async def ticket(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# 3. รันเว็บและบอทพร้อมกัน
+# ---------------------------------------------------------
+# คำสั่งที่ 4: /verify (ระบบยืนยันตัวตน)
+# ---------------------------------------------------------
+@bot.tree.command(name="verify", description="🛡️ ส่งข้อความระบบยืนยันตัวตน (Verify)")
+async def verify(interaction: discord.Interaction):
+    view = VerifyView()
+    
+    embed = discord.Embed(
+        title="</> ระบบยืนยันตัวตน",
+        description=(
+            "> 🔑 กดปุ่มด้านล่างเพื่อเริ่มยืนยันตัวตน\n"
+            "> {/} ระบบจะส่งรหัส 6 หลัก ให้คุณกรอก\n"
+            "> 🟩 กรอกรหัสถูกต้อง $\\rightarrow$ ได้รับ `@ · Member` ทันที\n"
+            "> 🩵 พร้อมให้บริการตลอด 24 ชั่วโมง"
+        ),
+        color=0x5865F2
+    )
+
+    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+
+# 3. รันเว็บเซิร์ฟเวอร์และบอทพร้อมกัน
 if __name__ == "__main__":
     t = threading.Thread(target=run_flask)
     t.start()
