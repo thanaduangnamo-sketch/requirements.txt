@@ -11,7 +11,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite & Stats System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats & Changelog System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -22,7 +22,7 @@ intents = discord.Intents.default()
 intents.guilds = True
 intents.voice_states = True
 intents.message_content = True
-intents.members = True  # จำเป็นต้องเปิดเพื่อให้บอทนับจำนวนสมาชิกและบอทได้ถูกต้อง
+intents.members = True
 
 # --- ระบบ Modal สำหรับกรอกรหัสยืนยันตัวตน ---
 class VerifyModal(discord.ui.Modal, title="ระบบยืนยันตัวตน"):
@@ -73,11 +73,11 @@ class TicketView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="OPEN TICKET", emoji="🎫", style=discord.ButtonStyle.blurple, custom_id="persistent_ticket_button_id")
+    @discord.ui.button(label="เปิดตั๋วติดต่อทีมงาน", emoji="🎫", style=discord.ButtonStyle.primary, custom_id="persistent_new_ticket_button_id")
     async def ticket_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         guild = interaction.guild
         user = interaction.user
-        channel_name = f"ticket-{user.name}"
+        channel_name = f"🎟️・ticket-{user.name}"
 
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
@@ -93,16 +93,22 @@ class TicketView(discord.ui.View):
             ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
             
             await interaction.response.send_message(
-                f'🔒 สร้างห้องส่วนตัวให้คุณเรียบร้อยแล้ว! ไปพูดคุยต่อได้ที่: {ticket_channel.mention}', 
+                f'🔒 ระบบได้สร้างห้องส่วนตัวให้คุณแล้วครับ: {ticket_channel.mention}', 
                 ephemeral=True
             )
 
             ping_text = admin_role.mention if admin_role else "@here"
-            await ticket_channel.send(
-                f"👋 สวัสดีครับ {user.mention}\n"
-                f"นี่คือห้องตั๋วส่วนตัวของคุณ มีปัญหาอะไรแจ้งไว้ได้เลยครับ!\n"
-                f"🔔 แจ้งเตือนทีมงาน: {ping_text}"
+            
+            embed_ticket = discord.Embed(
+                title="🎫 ศูนย์ช่วยเหลือและซัพพอร์ตส่วนตัว",
+                description=(
+                    f"สวัสดีครับคุณ {user.mention}\n"
+                    "แจ้งรายละเอียดปัญหาหรือเรื่องที่ต้องการติดต่อทีมงานไว้ได้เลยครับ\n\n"
+                    "📌 *โปรดรอสักครู่ ทีมงานจะเข้ามาตรวจสอบโดยเร็วที่สุด*"
+                ),
+                color=0x3498DB
             )
+            await ticket_channel.send(content=ping_text, embed=embed_ticket)
         except Exception as e:
             await interaction.response.send_message(f'❌ เกิดข้อผิดพลาดในการสร้างห้อง: {e}', ephemeral=True)
 
@@ -115,6 +121,23 @@ class RulesView(discord.ui.View):
     async def rules_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("✅ ขอบคุณที่อ่านและยอมรับกฎของเซิร์ฟเวอร์เราครับ ขอให้สนุก!", ephemeral=True)
 
+# --- ระบบ View สำหรับ Changelog (กดรับทราบแล้วแจ้งเตือนเจ้าของบอท) ---
+class ChangelogView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        self.owner_id = 1532607357962420229
+
+    @discord.ui.button(label="รับทราบ", emoji="✅", style=discord.ButtonStyle.success, custom_id="persistent_changelog_ack_button_id")
+    async def ack_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message("✅ คุณได้กดรับทราบประกาศอัปเดตเรียบร้อยแล้วครับ!", ephemeral=True)
+        
+        try:
+            owner = await interaction.client.fetch_user(self.owner_id)
+            if owner and owner.id != interaction.user.id:
+                await owner.send(f"🔔 แจ้งเตือนจากเซิร์ฟเวอร์ **{interaction.guild.name}**: สมาชิกชื่อ `{interaction.user.name}` ได้กดปุ่มรับทราบประกาศอัปเดตแล้วครับ!")
+        except Exception:
+            pass
+
 class VoiceBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix='!', intents=intents)
@@ -123,6 +146,7 @@ class VoiceBot(commands.Bot):
         self.add_view(TicketView())
         self.add_view(VerifyView())
         self.add_view(RulesView())
+        self.add_view(ChangelogView())
         await self.tree.sync()
         print("🚀 Slash commands synced and Persistent Views loaded successfully.")
 
@@ -132,10 +156,9 @@ bot = VoiceBot()
 async def on_ready():
     print(f'✅ Logged in as {bot.user.name} (ID: {bot.user.id})')
     
-    # ตั้งค่าสถานะจุดสีแดง (DND)
     await bot.change_presence(
         status=discord.Status.dnd, 
-        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Stats 24 ชม.")
+        activity=discord.Game(name="🎧 ระบบออนช่องเสียง & Changelog 24 ชม.")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
@@ -179,26 +202,24 @@ async def leave(interaction: discord.Interaction):
         await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
 # คำสั่ง /ticket
-@bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋ว Ticket สำหรับสมาชิกทุกคน")
+@bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงานดีไซน์ใหม่")
 async def ticket(interaction: discord.Interaction):
     view = TicketView()
-    pinterest_image_url = "https://i.pinimg.com/736x/99/30/e8/9930e86245884b97783ae63e9d5162fc.jpg"
     
     embed = discord.Embed(
-        title="Help & Support\nTicket System",
+        title="🌟 ศูนย์บริการช่วยเหลือผู้เล่น (Support Ticket)",
         description=(
-            "🎟️ สั่งซื้อสินค้า ติดต่อแอดมิน ติดต่องาน แจ้งปัญหา "
-            "ติดต่อสอบถาม ได้ที่ **Ticket Support 24 Hour**\n\n"
-            "⏰\n"
-            "Admin สต๊าฟรอ มีแอดมินบริการ ตรวจสอบทุกๆครั้ง "
-            "ไม่ต้องเป็นห่วงเรื่องความปลอดภัย เพราะปลอดภัยแน่นอน "
-            "ไม่มีหลุด ข้อมูลส่วนตัวของลูกค้าปลอดภัยหายห่วง💯!!"
+            "────────────────────────\n"
+            "💬 **ต้องการความช่วยเหลือ หรือติดต่อทีมงาน?**\n"
+            "• แจ้งปัญหาการใช้งาน / บัคต่างๆ\n"
+            "• ติดต่อซื้อสินค้า / เติมเงิน / โดเนท\n"
+            "• ติดต่อสอบถามข้อมูลทั่วไป\n\n"
+            "📌 **วิธีใช้งาน:** กดปุ่ม **'เปิดตั๋วติดต่อทีมงาน'** ด้านล่างนี้เพื่อสร้างห้องส่วนตัวสำหรับพูดคุยกับทีมงานได้ทันที\n"
+            "────────────────────────"
         ),
-        color=0xFEE75C
+        color=0x9B59B6
     )
-    embed.set_thumbnail(url=pinterest_image_url)
-    embed.set_image(url=pinterest_image_url)
-    embed.set_footer(text="Powered by Ticket System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+    embed.set_footer(text="ระบบซัพพอร์ตออนไลน์ตลอด 24 ชั่วโมง 🔒", icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
@@ -244,6 +265,46 @@ async def rules(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
+# คำสั่ง /changelog
+@bot.tree.command(name="changelog", description="📢 สร้างห้องประกาศอัปเดตแบบล็อกห้อง พร้อมปุ่มรับทราบ")
+@app_commands.checks.has_permissions(manage_channels=True)
+async def changelog(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    user = interaction.user
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
+        user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+    }
+
+    admin_role = discord.utils.get(guild.roles, name="Admin")
+    if admin_role:
+        overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+
+    try:
+        log_channel = await guild.create_text_channel(name="📢・changelog-update", overwrites=overwrites)
+        view = ChangelogView()
+        
+        embed = discord.Embed(
+            title="🚀 ประกาศบันทึกการอัปเดตระบบ (Changelog)",
+            description=(
+                "**✨ รายการอัปเดตประจำเวอร์ชัน:**\n"
+                "• 🎟️ **ระบบ Ticket ดีไซน์ใหม่:** ปรับโฆษณาและหน้าต่างเปิดตั๋วให้สวยงามยิ่งขึ้น\n"
+                "• 🔒 **ห้องประกาศล็อกพิเศษ:** ช่องนี้ถูกซ่อนไว้เฉพาะทีมงานและผู้มีสิทธิ์\n"
+                "• ✅ **ระบบยืนยันรับทราบ:** กดปุ่มด้านล่างเพื่อยืนยันว่าคุณรับทราบประกาศนี้แล้ว\n\n"
+                "📌 *กรุณากดปุ่ม **'รับทราบ'** ด้านล่างนี้ครับ*"
+            ),
+            color=0xF1C40F
+        )
+        embed.set_footer(text=f"ประกาศโดย {user.name}", icon_url=user.avatar.url if user.avatar else None)
+
+        await log_channel.send(embed=embed, view=view)
+        await interaction.followup.send(f"✅ สร้างห้องประกาศอัปเดตแบบล็อกเรียบร้อยแล้วที่: {log_channel.mention}", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
+
 # คำสั่ง /invite
 @bot.tree.command(name="invite", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร (ไม่มีวันหมดอายุ)")
 async def invite(interaction: discord.Interaction):
@@ -272,7 +333,7 @@ async def invite(interaction: discord.Interaction):
     except Exception as e:
         await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการสร้างลิงค์เชิญ: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
 
-# คำสั่ง /stats (สร้างห้องสถิติติดไว้ด้านบนสุดของเซิร์ฟเวอร์เสมอ)
+# คำสั่ง /stats
 @bot.tree.command(name="stats", description="📊 สร้างหมวดหมู่และช่องเสียงสถิติเซิร์ฟเวอร์ไว้ด้านบนสุด")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def stats(interaction: discord.Interaction):
@@ -288,10 +349,8 @@ async def stats(interaction: discord.Interaction):
     }
 
     try:
-        # สร้างหมวดหมู่ (กำหนด position=0 เพื่อให้ไปอยู่ด้านบนสุดของเซิร์ฟเวอร์เสมอ)
         category = await guild.create_category("📈 · SERVERSTATS · 📈", position=0)
 
-        # สร้างช่องเสียงสถิติทั้ง 3 ช่องเรียงลงมา
         await guild.create_voice_channel(f"👥 · สมาชิกทั้งหมด : {total_members}", category=category, overwrites=overwrites)
         await guild.create_voice_channel(f"👤 · สมาชิก : {humans}", category=category, overwrites=overwrites)
         await guild.create_voice_channel(f"🤖 · บอท : {bots}", category=category, overwrites=overwrites)
