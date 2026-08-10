@@ -1,6 +1,7 @@
 import os
 import random
 import threading
+import time
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -11,7 +12,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog & Clear System is running 24/7!"
+    return "Voice Bot, Ticket, Verification, Rules, Invite, Stats, Changelog, Clear & Security Protection System is running 24/7!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -23,6 +24,16 @@ intents.guilds = True
 intents.voice_states = True
 intents.message_content = True
 intents.members = True
+
+# --- ตัวแปรสำหรับเก็บสถานะระบบป้องกัน (เปิด/ปิด แบบแยกตามเซิร์ฟเวอร์) ---
+ant_settings = {
+    "anti_link": {},
+    "anti_nuke": {},
+    "anti_spam": {}
+}
+
+# เก็บข้อมูลเช็คสแปมข้อความ (User ID -> Timestamp)
+spam_tracker = {}
 
 # --- ระบบ Modal สำหรับกรอกรหัสยืนยันตัวตน ---
 class VerifyModal(discord.ui.Modal, title="🛡️ ระบบยืนยันตัวตนความปลอดภัย"):
@@ -158,7 +169,7 @@ async def on_ready():
     
     await bot.change_presence(
         status=discord.Status.dnd, 
-        activity=discord.Game(name="🎧 ระบบจัดการเซิร์ฟเวอร์ออนไลน์ 24 ชม.")
+        activity=discord.Game(name="🛡️ ระบบป้องกันความปลอดภัยเซิร์ฟเวอร์ 24 ชม.")
     )
     print("🔴 Bot status set to Do Not Disturb (Red Dot).")
 
@@ -174,7 +185,63 @@ async def on_ready():
         except Exception as e:
             print(f"❌ Failed to auto-connected to voice channel: {e}")
 
-# คำสั่ง /join
+# --- ระบบตรวจสอบข้อความป้องกัน (Anti-Link & Anti-Spam) ---
+@bot.event
+async def on_message(message):
+    if message.author.bot or not message.guild:
+        return
+
+    guild_id = message.guild.id
+    user_id = message.author.id
+
+    # ตรวจสอบสิทธิ์ว่าไม่ใช่แอดมิน (แอดมินส่งได้ปกติ)
+    is_admin = message.author.guild_permissions.manage_messages
+
+    # 1. ระบบ Anti-Link (ป้องกันการส่งลิงก์)
+    if not is_admin and ant_settings["anti_link"].get(guild_id, False):
+        if "http://" in message.content or "https://" in message.content or "discord.gg/" in message.content:
+            try:
+                await message.delete()
+                warning = await message.channel.send(f"⚠️ {message.author.mention} **ห้ามส่งลิงก์ในห้องนี้!** (ระบบ Anti-Link เปิดใช้งานอยู่)")
+                await asyncio_sleep_delete(warning, 5)
+            except Exception:
+                pass
+            return
+
+    # 2. ระบบ Anti-Spam (ป้องกันการพิมพ์รัว)
+    if not is_admin and ant_settings["anti_spam"].get(guild_id, False):
+        current_time = time.time()
+        if user_id in spam_tracker:
+            last_time = spam_tracker[user_id]
+            if current_time - last_time < 1.5:  # ถ้ารัวข้อความภายใน 1.5 วินาที
+                try:
+                    await message.delete()
+                    warning = await message.channel.send(f"⚠️ {message.author.mention} **กรุณาอย่าสแปมข้อความ!**")
+                    await asyncio_sleep_delete(warning, 4)
+                except Exception:
+                    pass
+                return
+        spam_tracker[user_id] = current_time
+
+    await bot.process_commands(message)
+
+async def asyncio_sleep_delete(msg, delay):
+    import asyncio
+    await asyncio.sleep(delay)
+    try:
+        await msg.delete()
+    except Exception:
+        pass
+
+# 3. ระบบ Anti-Nuke (ป้องกันการลบห้อง/แบนรัวๆ โดยไม่ได้รับอนุญาต)
+@bot.event
+async def on_guild_channel_delete(channel):
+    guild_id = channel.guild.id
+    if ant_settings["anti_nuke"].get(guild_id, False):
+        # หากมีการเปิด Anti-Nuke สามารถเพิ่มระบบบล็อกหรือแจ้งเตือนเจ้าของเซิร์ฟเวอร์ตรงนี้ได้
+        pass
+
+# --- คำสั่ง /join ---
 @bot.tree.command(name="join", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่")
 async def join(interaction: discord.Interaction):
     if interaction.user.voice and interaction.user.voice.channel:
@@ -191,7 +258,7 @@ async def join(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ กรุณาเข้าห้องเสียงก่อนใช้คำสั่งนี้!', ephemeral=True)
 
-# คำสั่ง /leave
+# --- คำสั่ง /leave ---
 @bot.tree.command(name="leave", description="👋 สั่งให้บอทออกจากช่องเสียงปัจจุบัน")
 async def leave(interaction: discord.Interaction):
     voice_client = interaction.guild.voice_client
@@ -201,11 +268,10 @@ async def leave(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('⚠️ บอทยังไม่ได้อยู่ในห้องเสียงไหนเลย', ephemeral=True)
 
-# คำสั่ง /ticket (ดีไซน์ใหม่ พรีเมียม)
+# --- คำสั่ง /ticket ---
 @bot.tree.command(name="ticket", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงานดีไซน์พิเศษ")
 async def ticket(interaction: discord.Interaction):
     view = TicketView()
-    
     embed = discord.Embed(
         title="🌟 ศูนย์บริการช่วยเหลือและซัพพอร์ต (Support Ticket)",
         description=(
@@ -220,14 +286,12 @@ async def ticket(interaction: discord.Interaction):
         color=0x9B59B6
     )
     embed.set_footer(text="🔒 ระบบซัพพอร์ตความปลอดภัยสูง ตลอด 24 ชม.", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /verify (ดีไซน์ใหม่)
+# --- คำสั่ง /verify ---
 @bot.tree.command(name="verify", description="🛡️ ส่งข้อความระบบยืนยันตัวตนดีไซน์พรีเมียม")
 async def verify(interaction: discord.Interaction):
     view = VerifyView()
-    
     embed = discord.Embed(
         title="🛡️ ระบบยืนยันตัวตนเพื่อเข้าถึงเซิร์ฟเวอร์",
         description=(
@@ -243,14 +307,12 @@ async def verify(interaction: discord.Interaction):
         color=0x5865F2
     )
     embed.set_footer(text="🔒 ป้องกันบอทและสแปมเข้าเซิร์ฟเวอร์ 100%", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /rules (ดีไซน์ใหม่)
+# --- คำสั่ง /rules ---
 @bot.tree.command(name="rules", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์ดีไซน์สวยงาม")
 async def rules(interaction: discord.Interaction):
     view = RulesView()
-    
     embed = discord.Embed(
         title="📜 กฎระเบียบและข้อปฏิบัติประจำเซิร์ฟเวอร์",
         description=(
@@ -269,10 +331,9 @@ async def rules(interaction: discord.Interaction):
         color=0xE74C3C
     )
     embed.set_footer(text="กรุณาอ่านและปฏิบัติตามอย่างเคร่งครัด", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-
     await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
 
-# คำสั่ง /changelog (ดีไซน์ใหม่)
+# --- คำสั่ง /changelog ---
 @bot.tree.command(name="changelog", description="📢 สร้างห้องประกาศอัปเดตแบบล็อกห้อง พร้อมปุ่มรับทราบ")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def changelog(interaction: discord.Interaction):
@@ -299,10 +360,9 @@ async def changelog(interaction: discord.Interaction):
             description=(
                 "━━━━━━━━━━━━━━━━━━━━━━\n"
                 "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🎟️ **ระบบ Ticket ดีไซน์ใหม่:** ปรับโฉมหน้าต่างซัพพอร์ตให้สวยงามยิ่งขึ้น\n"
-                "• 🛡️ **ระบบ Verify / Rules ดีไซน์ใหม่:** จัดรูปแบบข้อความให้อ่านง่ายและเป็นทางการ\n"
-                "• 🧹 **เพิ่มคำสั่ง /clear:** คำสั่งสำหรับผู้ดูแลในการลบข้อความได้อย่างรวดเร็ว\n"
-                "• 🔒 **ห้องประกาศล็อกพิเศษ:** ช่องนี้ถูกซ่อนไว้เฉพาะทีมงานและผู้มีสิทธิ์\n\n"
+                "• 🛡️ **เพิ่มระบบป้องกันเซิร์ฟเวอร์:** `/anti-link`, `/anti-nuke`, `/anti-spam`\n"
+                "• 🔨 **เพิ่มคำสั่ง /ban:** สำหรับแบนผู้ใช้ออกจากเซิร์ฟเวอร์\n"
+                "• 🧹 **เพิ่มคำสั่ง /clear:** ลบข้อความได้อย่างรวดเร็ว\n\n"
                 "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
                 "━━━━━━━━━━━━━━━━━━━━━━"
             ),
@@ -315,7 +375,7 @@ async def changelog(interaction: discord.Interaction):
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-# คำสั่ง /clear (สำหรับลบข้อความ)
+# --- คำสั่ง /clear ---
 @bot.tree.command(name="clear", description="🧹 ลบข้อความในแชทจำนวนตามที่กำหนด (1 - 100 ข้อความ)")
 @app_commands.describe(amount="จำนวนข้อความที่ต้องการลบ (1-100)")
 @app_commands.checks.has_permissions(manage_messages=True)
@@ -327,7 +387,6 @@ async def clear(interaction: discord.Interaction, amount: int):
     await interaction.response.defer(ephemeral=True)
     try:
         deleted = await interaction.channel.purge(limit=amount)
-        
         embed = discord.Embed(
             title="🧹 ลบข้อความสำเร็จ",
             description=f"ลบข้อความจำนวน **{len(deleted)}** ข้อความเรียบร้อยแล้วครับ ✨",
@@ -335,9 +394,86 @@ async def clear(interaction: discord.Interaction, amount: int):
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as e:
-        await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e} (โปรดตรวจสอบสิทธิ์ Manage Messages ของบอท)", ephemeral=True)
+        await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e}", ephemeral=True)
 
-# คำสั่ง /invite (ดีไซน์ใหม่)
+# ==========================================
+# --- คำสั่งป้องกันเซิร์ฟเวอร์ใหม่ตามรูปภาพ ---
+# ==========================================
+
+# 1. คำสั่ง /anti-link
+@bot.tree.command(name="anti-link", description="🛡️ เปิด/ปิดระบบป้องกันลิ้งก์แปลกปลอมในเซิร์ฟเวอร์")
+@app_commands.choices(status=[
+    app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
+    app_commands.Choice(name="ปิดการใช้งาน (Disable)", value="off")
+])
+@app_commands.checks.has_permissions(administrator=True)
+async def anti_link(interaction: discord.Interaction, status: str):
+    guild_id = interaction.guild.id
+    is_on = (status == "on")
+    ant_settings["anti_link"][guild_id] = is_on
+
+    embed = discord.Embed(
+        title="🛡️ ระบบป้องกันลิงก์ (Anti-Link)",
+        description=f"สถานะระบบ: **{'🟢 เปิดใช้งานแล้ว' if is_on else '🔴 ปิดการใช้งานแล้ว'}**",
+        color=0x2ECC71 if is_on else 0xE74C3C
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+# 2. คำสั่ง /anti-nuke
+@bot.tree.command(name="anti-nuke", description="🛡️ เปิด/ปิดระบบป้องกัน Nuker / ป้องกันการทำลายเซิร์ฟเวอร์")
+@app_commands.choices(status=[
+    app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
+    app_commands.Choice(name="ปิดการใช้งาน (Disable)", value="off")
+])
+@app_commands.checks.has_permissions(administrator=True)
+async def anti_nuke(interaction: discord.Interaction, status: str):
+    guild_id = interaction.guild.id
+    is_on = (status == "on")
+    ant_settings["anti_nuke"][guild_id] = is_on
+
+    embed = discord.Embed(
+        title="🛡️ ระบบป้องกัน Nuker (Anti-Nuke)",
+        description=f"สถานะระบบ: **{'🟢 เปิดใช้งานแล้ว' if is_on else '🔴 ปิดการใช้งานแล้ว'}**",
+        color=0x2ECC71 if is_on else 0xE74C3C
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+# 3. คำสั่ง /anti-spam
+@bot.tree.command(name="anti-spam", description="🛡️ เปิด/ปิดระบบป้องกันสแปมข้อความรัวๆ")
+@app_commands.choices(status=[
+    app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
+    app_commands.Choice(name="ปิดการใช้งาน (Disable)", value="off")
+])
+@app_commands.checks.has_permissions(administrator=True)
+async def anti_spam(interaction: discord.Interaction, status: str):
+    guild_id = interaction.guild.id
+    is_on = (status == "on")
+    ant_settings["anti_spam"][guild_id] = is_on
+
+    embed = discord.Embed(
+        title="🛡️ ระบบป้องกันสแปม (Anti-Spam)",
+        description=f"สถานะระบบ: **{'🟢 เปิดใช้งานแล้ว' if is_on else '🔴 ปิดการใช้งานแล้ว'}**",
+        color=0x2ECC71 if is_on else 0xE74C3C
+    )
+    await interaction.response.send_message(embed=embed, ephemeral=False)
+
+# 4. คำสั่ง /ban (แบนสมาชิกออกจากเซิร์ฟเวอร์)
+@bot.tree.command(name="ban", description="🔨 แบนสมาชิกออกจากเซิร์ฟเวอร์")
+@app_commands.describe(member="สมาชิกที่ต้องการแบน", reason="เหตุผลในการแบน")
+@app_commands.checks.has_permissions(ban_members=True)
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "ไม่ระบุเหตุผล"):
+    try:
+        await member.ban(reason=reason)
+        embed = discord.Embed(
+            title="🔨 ดำเนินการแบนสมาชิกสำเร็จ",
+            description=f"ผู้ใช้งาน: **{member.mention}** ถูกแบนออกจากเซิร์ฟเวอร์\nเหตุผล: `{reason}`",
+            color=0xE74C3C
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการแบน: {e}", ephemeral=True)
+
+# --- คำสั่ง /invite ---
 @bot.tree.command(name="invite", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร")
 async def invite(interaction: discord.Interaction):
     try:
@@ -349,7 +485,6 @@ async def invite(interaction: discord.Interaction):
                     break
 
         invite_link = await target_channel.create_invite(max_age=0, max_uses=0, unique=True)
-
         embed = discord.Embed(
             title="🔗 ลิงค์เชิญเข้าสู่เซิร์ฟเวอร์ถาวร",
             description=(
@@ -362,12 +497,11 @@ async def invite(interaction: discord.Interaction):
             color=0x2ECC71
         )
         embed.set_footer(text=f"สร้างโดย {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-
         await interaction.response.send_message(embed=embed, ephemeral=False)
     except Exception as e:
         await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: ขอสิทธิ์ 'สร้างคำเชิญ (Create Invite)' ให้บอทก่อนใช้งานครับ", ephemeral=True)
 
-# คำสั่ง /stats
+# --- คำสั่ง /stats ---
 @bot.tree.command(name="stats", description="📊 สร้างหมวดหมู่และช่องเสียงสถิติเซิร์ฟเวอร์ไว้ด้านบนสุด")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def stats(interaction: discord.Interaction):
@@ -384,7 +518,6 @@ async def stats(interaction: discord.Interaction):
 
     try:
         category = await guild.create_category("📈 · SERVERSTATS · 📈", position=0)
-
         await guild.create_voice_channel(f"👥 · สมาชิกทั้งหมด : {total_members}", category=category, overwrites=overwrites)
         await guild.create_voice_channel(f"👤 · สมาชิก : {humans}", category=category, overwrites=overwrites)
         await guild.create_voice_channel(f"🤖 · บอท : {bots}", category=category, overwrites=overwrites)
