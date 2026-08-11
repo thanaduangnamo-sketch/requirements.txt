@@ -35,12 +35,8 @@ ant_settings = {
     "anti_spam": {}
 }
 
-# เก็บ Channel ID สำหรับแจ้งเตือน Roblox แยกตาม Guild (Guild ID -> Channel ID)
 roblox_notify_channels = {}
-
-# เก็บเวอร์ชันล่าสุดของ Roblox เพื่อเทียบว่ามีการเปลี่ยนแปลงหรือไม่
 latest_roblox_version = None
-
 spam_tracker = {}
 
 # --- ระบบ Modal สำหรับกรอกรหัสยืนยันตัวตน ---
@@ -61,7 +57,6 @@ class VerifyModal(discord.ui.Modal, title="🛡️ ระบบยืนยั�
         if self.code_input.value.strip() == self.expected_code:
             guild = interaction.guild
             member = interaction.user
-            
             role = discord.utils.get(guild.roles, name="Member")
             
             if role:
@@ -88,9 +83,7 @@ class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค�
         await interaction.response.defer(ephemeral=True)
         user_token = self.token_input.value.strip()
 
-        headers = {
-            "Authorization": f"Bot {user_token}"
-        }
+        headers = {"Authorization": f"Bot {user_token}"}
         
         async with aiohttp.ClientSession() as session:
             async with session.get("https://discord.com/api/v10/users/@me", headers=headers) as resp:
@@ -105,10 +98,7 @@ class TokenInputModal(discord.ui.Modal, title="🔑 ระบบตั้งค�
                     else:
                         bot_avatar_url = "https://i.pinimg.com/1200x/ec/4c/a4/ec4ca469fe2a2c245010b94099819059.jpg"
 
-                    if len(user_token) > 10:
-                        masked_token = user_token[:6] + "..." + user_token[-6:]
-                    else:
-                        masked_token = "******"
+                    masked_token = user_token[:6] + "..." + user_token[-6:] if len(user_token) > 10 else "******"
 
                     embed = discord.Embed(
                         title="🔑 ผลการตรวจสอบ Token และสถานะบอท (Validated)",
@@ -175,14 +165,9 @@ class TicketView(discord.ui.View):
 
         try:
             ticket_channel = await guild.create_text_channel(name=channel_name, overwrites=overwrites)
+            await interaction.response.send_message(f'🔒 ระบบได้สร้างห้องส่วนตัวให้คุณแล้วครับ: {ticket_channel.mention}', ephemeral=True)
             
-            await interaction.response.send_message(
-                f'🔒 ระบบได้สร้างห้องส่วนตัวให้คุณแล้วครับ: {ticket_channel.mention}', 
-                ephemeral=True
-            )
-
             ping_text = admin_role.mention if admin_role else "@here"
-            
             embed_ticket = discord.Embed(
                 title="🎫 ศูนย์ช่วยเหลือและซัพพอร์ตส่วนตัว",
                 description=(
@@ -212,7 +197,6 @@ class ChangelogView(discord.ui.View):
     @discord.ui.button(label="รับทราบประกาศ", emoji="✅", style=discord.ButtonStyle.success, custom_id="persistent_changelog_ack_button_id")
     async def ack_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_message("✨ คุณได้กดรับทราบประกาศอัปเดตเรียบร้อยแล้วครับ!", ephemeral=True)
-        
         try:
             owner = await interaction.client.fetch_user(self.owner_id)
             if owner and owner.id != interaction.user.id:
@@ -232,7 +216,6 @@ class VoiceBot(commands.Bot):
         self.add_view(TokenView())
         await self.tree.sync()
         print("🚀 Slash commands synced and Persistent Views loaded successfully.")
-        
         check_roblox_updates.start()
 
 bot = VoiceBot()
@@ -241,11 +224,14 @@ bot = VoiceBot()
 async def on_ready():
     print(f'✅ Logged in as {bot.user.name} (ID: {bot.user.id})')
     
+    # 🟣 ตั้งสถานะบอทให้เป็นสตรีมมิ่ง (แสดงผลเป็นสีม่วงบน Discord)
     await bot.change_presence(
-        status=discord.Status.dnd, 
-        activity=discord.Game(name="🛡️ ใช้คำสั่ง /ช่วยเหลือ เพื่อดูวิธีใช้งาน")
+        activity=discord.Streaming(
+            name="🛡️ ใช้คำสั่ง /ช่วยเหลือ", 
+            url="https://www.twitch.tv/discord"
+        )
     )
-    print("🔴 Bot status set to Do Not Disturb (Red Dot).")
+    print("🟣 Bot status set to Streaming (Purple Online).")
 
 # ==========================================
 # --- Background Task: เช็กอัปเดต Roblox ทุกๆ 3 นาที ---
@@ -290,11 +276,10 @@ async def check_roblox_updates():
                                         color=0xE74C3C
                                     )
                                     embed.set_footer(text="ระบบตรวจสอบอัตโนมัติ 24 ชม.", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-                                    
                                     try:
                                         await channel.send(content="@everyone", embed=embed)
                                     except Exception as e:
-                                        print(f"❌ Failed to send roblox update notification in guild {guild.name}: {e}")
+                                        print(f"❌ Failed to send roblox update notification: {e}")
         except Exception as e:
             print(f"⚠️ Error checking Roblox version loop: {e}")
 
@@ -305,29 +290,6 @@ async def before_check_roblox():
 # ==========================================
 # --- ระบบป้องกันความปลอดภัย (Anti-Nuke / Anti-Link / Anti-Spam) ---
 # ==========================================
-
-@bot.event
-async def on_guild_channel_create(channel):
-    guild_id = channel.guild.id
-    if ant_settings["anti_nuke"].get(guild_id, False):
-        try:
-            async for entry in channel.guild.audit_logs(limit=1, action=discord.AuditLogAction.channel_create):
-                user = entry.user
-                if user and not user.bot and user.id != channel.guild.owner_id:
-                    pass
-        except Exception:
-            pass
-
-@bot.event
-async def on_member_ban(guild, user):
-    guild_id = guild.id
-    if ant_settings["anti_nuke"].get(guild_id, False):
-        try:
-            async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
-                pass
-        except Exception:
-            pass
-
 @bot.event
 async def on_message(message):
     if message.author.bot or not message.guild:
@@ -365,7 +327,6 @@ async def on_message(message):
     await bot.process_commands(message)
 
 async def asyncio_sleep_delete(msg, delay):
-    import asyncio
     await asyncio.sleep(delay)
     try:
         await msg.delete()
@@ -379,16 +340,13 @@ async def asyncio_sleep_delete(msg, delay):
 @bot.tree.command(name="เช็กเวอร์ชันรอบล็อกซ์", description="🎮 ตรวจสอบสถานะการอัปเดตเวอร์ชันล่าสุดของ Roblox แบบเรียลไทม์")
 async def check_roblox_version(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=False)
-    
     url = "https://setup.rbxcdn.com/version"
     
     async with aiohttp.ClientSession() as session:
         try:
             async with session.get(url) as resp:
                 if resp.status == 200:
-                    version_hash = await resp.text()
-                    version_hash = version_hash.strip()
-                    
+                    version_hash = (await resp.text()).strip()
                     is_released = True if len(version_hash) > 5 else False
                     
                     embed = discord.Embed(
@@ -401,40 +359,28 @@ async def check_roblox_version(interaction: discord.Interaction):
                         ),
                         color=0x2ECC71 if is_released else 0xF1C40F
                     )
-                    
                     if is_released:
-                        embed.add_field(
-                            name="🟢 สถานะการอัปเดต",
-                            value="**ปล่อยอัปเดตเวอร์ชันใหม่ออกมาแล้ว!** (Client พร้อมใช้งานและอัปเดตอัตโนมัติ)",
-                            inline=False
-                        )
+                        embed.add_field(name="🟢 สถานะการอัปเดต", value="**ปล่อยอัปเดตเวอร์ชันใหม่ออกมาแล้ว!**", inline=False)
                     else:
-                        embed.add_field(
-                            name="🟡 สถานะการอัปเดต",
-                            value="**ยังไม่ปล่อยอัปเดตออกมา / อยู่ระหว่างรอซิงค์เวอร์ชัน**",
-                            inline=False
-                        )
+                        embed.add_field(name="🟡 สถานะการอัปเดต", value="**ยังไม่ปล่อยอัปเดตออกมา / อยู่ระหว่างรอซิงค์เวอร์ชัน**", inline=False)
                         
                     embed.set_footer(text=f"ตรวจสอบโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
                     await interaction.followup.send(embed=embed)
                 else:
-                    await interaction.followup.send("❌ ไม่สามารถดึงข้อมูลเวอร์ชัน Roblox จากเซิร์ฟเวอร์หลักได้ในขณะนี้", ephemeral=True)
+                    await interaction.followup.send("❌ ไม่สามารถดึงข้อมูลเวอร์ชัน Roblox ได้ในขณะนี้", ephemeral=True)
         except Exception as e:
-            await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}", ephemeral=True)
+            await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
 @bot.tree.command(name="ตั้งห้องแจ้งเตือนรอบล็อกซ์", description="📢 เลือกห้องสำหรับให้บอทแจ้งเตือนอัปเดตเวอร์ชัน Roblox พร้อมแท็ก @everyone")
 @app_commands.describe(ห้อง="เลือกห้องแชทที่ต้องการให้แจ้งเตือนอัปเดต")
 @app_commands.checks.has_permissions(administrator=True)
 async def set_roblox_channel(interaction: discord.Interaction, ห้อง: discord.TextChannel):
-    guild_id = interaction.guild.id
-    roblox_notify_channels[guild_id] = ห้อง.id
-
+    roblox_notify_channels[interaction.guild.id] = ห้อง.id
     embed = discord.Embed(
         title="✅ ตั้งค่าห้องแจ้งเตือน Roblox สำเร็จ",
-        description=f"บอทจะส่งข้อความแจ้งเตือนพร้อมแท็ก `@everyone` ไปยังห้อง {ห้อง.mention} ทันทีเมื่อ Roblox มีการอัปเดตเวอร์ชันใหม่!",
+        description=f"บอทจะส่งข้อความแจ้งเตือนพร้อมแท็ก `@everyone` ไปยังห้อง {ห้อง.mention} ทันทีเมื่อ Roblox มีอัปเดต!",
         color=0x2ECC71
     )
-    embed.set_footer(text=f"ตั้งค่าโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 @bot.tree.command(name="จัดการเสียง", description="🔊 สั่งให้บอทเข้ามาในช่องเสียงที่คุณอยู่ หรือออกจากห้อง")
@@ -472,254 +418,130 @@ async def help_command(interaction: discord.Interaction):
         description="นี่คือรายการคำสั่ง Slash Commands ทั้งหมดในระบบ (ภาษาไทย) ครับ:",
         color=0x3498DB
     )
-    embed.add_field(name="🎮 1. หมวดเกมและระบบพิเศษ", value="• `/เช็กเวอร์ชันรอบล็อกซ์` - ตรวจสอบอัปเดตเวอร์ชัน Roblox แบบเรียลไทม์\n• `/ตั้งห้องแจ้งเตือนรอบล็อกซ์` - กำหนดห้องแจ้งเตือนอัปเดต Roblox อัตโนมัติ (แท็ก @everyone)\n• `/จัดการเสียง` - สั่งให้บอทเข้าหรือออกจากห้องเสียง", inline=False)
-    embed.add_field(name="🎫 2. หมวดระบบตั๋วและยืนยันตัวตน", value="• `/เปิดตั๋ว` - ส่งข้อความเปิดตั๋วติดต่อทีมงาน\n• `/ยืนยันตัวตน` - ส่งข้อความระบบยืนยันตัวตนรับยศ Member", inline=False)
-    embed.add_field(name="📜 3. หมวดจัดการเซิร์ฟเวอร์และสถิติ", value="• `/กฎเซิร์ฟเวอร์` - ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์\n• `/ประกาศอัปเดต` - สร้างห้องประกาศอัปเดตแบบล็อกห้อง\n• `/สร้างลิงก์เชิญ` - สร้างลิงก์เชิญเข้าเซิร์ฟเวอร์ถาวร\n• `/สถิติเซิร์ฟเวอร์` - แสดงสถิติจำนวนสมาชิก", inline=False)
-    embed.add_field(name="🧹 4. หมวดจัดการสมาชิกและข้อความ", value="• `/ลบข้อความ` - ลบข้อความในแชท (1 - 100 ข้อความ)\n• `/แบนสมาชิก` - แบนสมาชิกออกจากเซิร์ฟเวอร์", inline=False)
-    embed.add_field(name="🛡️ 5. หมวดระบบป้องกันความปลอดภัย", value="• `/ตั้งค่าระบบป้องกันทั้งหมด` - เปิด/ปิด ระบบป้องกันเซิร์ฟเวอร์ทั้งหมด\n• `/ตรวจสอบโทเค็น` - ตรวจสอบสถานะบอทจริงส่งเข้า DM\n• `/ป้องกันลิงก์` / `/ป้องกันนุกเกอร์` / `/ป้องกันสแปม` - ตั้งค่าระบบป้องกันแยกย่อย", inline=False)
-    embed.set_footer(text="💡 พิมพ์เครื่องหมาย / เพื่อเลือกใช้งานคำสั่งภาษาไทยต่างๆ ได้เลย", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+    embed.add_field(name="🎮 1. หมวดเกมและระบบพิเศษ", value="• `/เช็กเวอร์ชันรอบล็อกซ์` - ตรวจสอบอัปเดตเวอร์ชัน Roblox\n• `/ตั้งห้องแจ้งเตือนรอบล็อกซ์` - ตั้งห้องแจ้งเตือน Roblox\n• `/จัดการเสียง` - ควบคุมบอทเข้า/ออกห้องเสียง", inline=False)
+    embed.add_field(name="🎫 2. หมวดระบบตั๋วและยืนยันตัวตน", value="• `/เปิดตั๋ว` - ส่งปุ่มเปิดตั๋วติดต่อทีมงาน\n• `/ยืนยันตัวตน` - ส่งปุ่มยืนยันตัวตนรับยศ Member", inline=False)
+    embed.add_field(name="📜 3. หมวดจัดการเซิร์ฟเวอร์", value="• `/กฎเซิร์ฟเวอร์` - แสดงกฎระเบียบ\n• `/ประกาศอัปเดต` - สร้างห้องประกาศล็อกห้อง\n• `/สร้างลิงก์เชิญ` - สร้างลิงก์เชิญถาวร\n• `/สถิติเซิร์ฟเวอร์` - ดูสถิติสมาชิก", inline=False)
+    embed.add_field(name="🧹 4. หมวดจัดการสมาชิกและข้อความ", value="• `/ลบข้อความ` - ลบข้อความ (1-100)\n• `/แบนสมาชิก` - แบนสมาชิก", inline=False)
+    embed.add_field(name="🛡️ 5. หมวดระบบความปลอดภัย", value="• `/ตั้งค่าระบบป้องกันทั้งหมด` - เปิด/ปิดระบบกันทั้งหมด\n• `/ตรวจสอบโทเค็น` - เช็ก Token บอทรอบใหม่ผ่าน DM\n• `/ป้องกันลิงก์` / `/ป้องกันนุกเกอร์` / `/ป้องกันสแปม` - ตั้งค่าระบบแยก", inline=False)
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
-@bot.tree.command(name="เปิดตั๋ว", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงานดีไซน์พิเศษ")
+@bot.tree.command(name="เปิดตั๋ว", description="🎫 ส่งข้อความระบบเปิดตั๋วติดต่อทีมงาน")
 async def ticket(interaction: discord.Interaction):
-    view = TicketView()
     embed = discord.Embed(
         title="🌟 ศูนย์บริการช่วยเหลือและซัพพอร์ต (Support Ticket)",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "💬 **ต้องการความช่วยเหลือ หรือติดต่อทีมงาน?**\n"
-            "• 🛠️ แจ้งปัญหาการใช้งาน / บัคต่างๆ\n"
-            "• 💳 ติดต่อซื้อสินค้า / เติมเงิน / โดเนท\n"
-            "• ❓ สอบถามข้อมูลหรือเรื่องอื่นๆ\n\n"
-            "📌 **วิธีใช้งาน:** กดปุ่ม **'เปิดตั๋วติดต่อทีมงาน'** ด้านล่างนี้เพื่อสร้างห้องส่วนตัวสำหรับพูดคุยกับทีมงานได้ทันที\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
-        ),
+        description="กดปุ่มด้านล่างเพื่อสร้างห้องส่วนตัวพูดคุยกับทีมงานได้ทันทีครับ",
         color=0x9B59B6
     )
-    embed.set_footer(text="🔒 ระบบซัพพอร์ตความปลอดภัยสูง ตลอด 24 ชม.", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+    await interaction.response.send_message(embed=embed, view=TicketView(), ephemeral=False)
 
-@bot.tree.command(name="ยืนยันตัวตน", description="🛡️ ส่งข้อความระบบยืนยันตัวตนดีไซน์พรีเมียม")
+@bot.tree.command(name="ยืนยันตัวตน", description="🛡️ ส่งข้อความระบบยืนยันตัวตนรับยศ Member")
 async def verify(interaction: discord.Interaction):
-    view = VerifyView()
     embed = discord.Embed(
         title="🛡️ ระบบยืนยันตัวตนเพื่อเข้าถึงเซิร์ฟเวอร์",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "✨ ยินดีต้อนรับสมาชิกใหม่ทุกท่าน!\n"
-            "กรุณายืนยันตัวตนเพื่อปลดล็อคห้องต่างๆ ภายในเซิร์ฟเวอร์\n\n"
-            "📌 **ขั้นตอนการยืนยัน:**\n"
-            "1️⃣ กดปุ่ม **'คลิกเพื่อยืนยันตัวตน'** ด้านล่าง\n"
-            "2️⃣ กรอกรหัส 6 หลักที่ระบบแสดงขึ้นมาให้ถูกต้อง\n"
-            "3️⃣ รับยศ `Member` ทันทีอัตโนมัติ!\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
-        ),
+        description="กดปุ่มด้านล่างและกรอกรหัส 6 หลักเพื่อรับยศอัตโนมัติ",
         color=0x5865F2
     )
-    embed.set_footer(text="🔒 ป้องกันบอทและสแปมเข้าเซิร์ฟเวอร์ 100%", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+    await interaction.response.send_message(embed=embed, view=VerifyView(), ephemeral=False)
 
-@bot.tree.command(name="กฎเซิร์ฟเวอร์", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์ดีไซน์สวยงาม")
+@bot.tree.command(name="กฎเซิร์ฟเวอร์", description="📜 ส่งข้อความกฎระเบียบประจำเซิร์ฟเวอร์")
 async def rules(interaction: discord.Interaction):
-    view = RulesView()
-    embed = discord.Embed(
-        title="📜 กฎระเบียบและข้อปฏิบัติประจำเซิร์ฟเวอร์",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📌 **1. ให้เกียรติและเคารพซึ่งกันและกัน**\n"
-            "> ห้ามเหยียดหยาม ดูหมิ่น หรือใช้ถ้อยคำรุนแรงต่อสมาชิกท่านอื่น\n\n"
-            "📌 **2. ห้ามสแปมข้อความหรือรูปภาพไม่เหมาะสม**\n"
-            "> ห้ามส่งข้อความซ้ำๆ รัวๆ หรือโพสต์เนื้อหา 18+ ในช่องแชททั่วไป\n\n"
-            "📌 **3. ห้ามโปรโมทหรือโฆษณาโดยไม่ได้รับอนุญาต**\n"
-            "> ห้ามส่งลิงก์เชิญดิสอื่น หรือชวนโปรโมทสินค้าในแชทส่วนรวม\n\n"
-            "📌 **4. ปฏิบัติตามคำสั่งของทีมงาน (Admin / Staff)**\n"
-            "> การตัดสินใจของทีมงานถือเป็นข้อยุติและสิ้นสุดในทุกกรณี\n\n"
-            "⚠️ *หากฝ่าฝืนกฎระเบียบ จะมีบทลงโทษตั้งแต่ตักเตือนจนถึงแบนถาวร*\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
-        ),
-        color=0xE74C3C
-    )
-    embed.set_footer(text="กรุณาอ่านและปฏิบัติตามอย่างเคร่งครัด", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+    embed = discord.Embed(title="📜 กฎระเบียบประจำเซิร์ฟเวอร์", description="กรุณาปฏิบัติตามกฎอย่างเคร่งครัด", color=0xE74C3C)
+    await interaction.response.send_message(embed=embed, view=RulesView(), ephemeral=False)
 
 @bot.tree.command(name="ประกาศอัปเดต", description="📢 สร้างห้องประกาศอัปเดตแบบล็อกห้อง พร้อมปุ่มรับทราบ")
 @app_commands.checks.has_permissions(manage_channels=True)
 async def changelog(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
-    user = interaction.user
-
     overwrites = {
         guild.default_role: discord.PermissionOverwrite(view_channel=False),
         guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
-        user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
+        interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
     }
-
-    admin_role = discord.utils.get(guild.roles, name="Admin")
-    if admin_role:
-        overwrites[admin_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
-
     try:
         log_channel = await guild.create_text_channel(name="📢・changelog-update", overwrites=overwrites)
-        view = ChangelogView()
-        
-        embed = discord.Embed(
-            title="🚀 ประกาศบันทึกการอัปเดตระบบ (Changelog)",
-            description=(
-                "━━━━━━━━━━━━━━━━━━━━━━\n"
-                "**✨ รายการอัปเดตระบบเวอร์ชันล่าสุด:**\n"
-                "• 🎮 **เพิ่มคำสั่งภาษาไทยทั้งหมด:** ค้นหาและใช้งานง่ายด้วยคำสั่งภาษาไทย\n"
-                "• 🛡️ **ยกระดับ Anti-System:** ระบบป้องกันลิงก์ สแปม และนุกเกอร์ทำงานจริง 100%\n\n"
-                "📌 *กรุณากดปุ่ม **'รับทราบประกาศ'** ด้านล่างนี้เพื่อยืนยันการรับรู้ครับ*\n"
-                "━━━━━━━━━━━━━━━━━━━━━━"
-            ),
-            color=0xF1C40F
-        )
-        embed.set_footer(text=f"ประกาศโดย {user.name}", icon_url=user.avatar.url if user.avatar else None)
-
-        await log_channel.send(embed=embed, view=view)
-        await interaction.followup.send(f"✅ สร้างห้องประกาศอัปเดตแบบล็อกเรียบร้อยแล้วที่: {log_channel.mention}", ephemeral=True)
+        embed = discord.Embed(title="🚀 ประกาศบันทึกการอัปเดตระบบ", description="กดปุ่มรับทราบด้านล่างนี้เพื่อยืนยันการรับรู้", color=0xF1C40F)
+        await log_channel.send(embed=embed, view=ChangelogView())
+        await interaction.followup.send(f"✅ สร้างห้องประกาศสำเร็จที่: {log_channel.mention}", ephemeral=True)
     except Exception as e:
         await interaction.followup.send(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-@bot.tree.command(name="ลบข้อความ", description="🧹 ลบข้อความในแชทจำนวนตามที่กำหนด (1 - 100 ข้อความ)")
+@bot.tree.command(name="ลบข้อความ", description="🧹 ลบข้อความในแชทจำนวนตามที่กำหนด (1 - 100)")
 @app_commands.describe(จำนวน="จำนวนข้อความที่ต้องการลบ (1-100)")
 @app_commands.checks.has_permissions(manage_messages=True)
 async def clear(interaction: discord.Interaction, จำนวน: int):
-    if จำนวน < 1 or จำนวน > 100:
-        await interaction.response.send_message("⚠️ กรุณาระบุจำนวนข้อความระหว่าง **1 ถึง 100** เท่านั้นครับ!", ephemeral=True)
+    if not (1 <= จำนวน <= 100):
+        await interaction.response.send_message("⚠️ กรุณาระบุจำนวนระหว่าง 1 ถึง 100 เท่านั้น!", ephemeral=True)
         return
-
     await interaction.response.defer(ephemeral=True)
-    try:
-        deleted = await interaction.channel.purge(limit=จำนวน)
-        embed = discord.Embed(
-            title="🧹 ลบข้อความสำเร็จ",
-            description=f"ลบข้อความจำนวน **{len(deleted)}** ข้อความเรียบร้อยแล้วครับ ✨",
-            color=0x2ECC71
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ เกิดข้อผิดพลาดในการลบข้อความ: {e}", ephemeral=True)
+    deleted = await interaction.channel.purge(limit=จำนวน)
+    await interaction.followup.send(embed=discord.Embed(title="🧹 ลบข้อความสำเร็จ", description=f"ลบไปแล้ว {len(deleted)} ข้อความ", color=0x2ECC71), ephemeral=True)
 
-@bot.tree.command(name="ตรวจสอบโทเค็น", description="🔑 ส่งแผงควบคุมระบบกรอก Token และตรวจสอบสถานะบอทรอบใหม่")
+@bot.tree.command(name="ตรวจสอบโทเค็น", description="🔑 ส่งแผงควบคุมระบบกรอก Token ตรวจสอบสถานะบอทผ่าน DM")
 @app_commands.checks.has_permissions(administrator=True)
 async def check_token(interaction: discord.Interaction):
-    view = TokenView()
-    embed = discord.Embed(
-        title="🔑 แผงควบคุมระบบตรวจสอบ Token",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🛡️ **ต้องการตรวจสอบสถานะและตั้งค่า Token ของบอท?**\n\n"
-            "📌 **วิธีใช้งาน:**\n"
-            "• กดปุ่ม **'คลิกเพื่อกรอก Token บอท'** ด้านล่างนี้\n"
-            "• กรอก Token ของคุณในหน้าต่างที่เด้งขึ้นมา\n"
-            "• ระบบจะเช็กกับ Discord API จริง และส่งผลรายงานพร้อมรูปโปรไฟล์บอทไปที่ **DM ส่วนตัว** ทันที!\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
-        ),
-        color=0x3498DB
-    )
-    embed.set_footer(text="🔒 ปลอดภัย ข้อมูลของคุณจะไม่ถูกเปิดเผยในช่องแชทสาธารณะ", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-    await interaction.response.send_message(embed=embed, view=view, ephemeral=False)
+    embed = discord.Embed(title="🔑 แผงควบคุมระบบตรวจสอบ Token", description="กดปุ่มด้านล่างเพื่อกรอกและเช็ก Token บอททาง DM", color=0x3498DB)
+    await interaction.response.send_message(embed=embed, view=TokenView(), ephemeral=False)
 
-@bot.tree.command(name="ตั้งค่าระบบป้องกันทั้งหมด", description="🛡️ เปิดหรือปิดระบบป้องกันเซิร์ฟเวอร์ทั้งหมดพร้อมกันทีเดียว")
+@bot.tree.command(name="ตั้งค่าระบบป้องกันทั้งหมด", description="🛡️ เปิดหรือปิดระบบป้องกันทั้งหมดพร้อมกัน")
 @app_commands.choices(สถานะ=[
     app_commands.Choice(name="เปิดระบบป้องกันทั้งหมด (Enable All)", value="on"),
     app_commands.Choice(name="ปิดระบบป้องกันทั้งหมด (Disable All)", value="off")
 ])
 @app_commands.checks.has_permissions(administrator=True)
 async def settings(interaction: discord.Interaction, สถานะ: str):
-    guild_id = interaction.guild.id
     is_on = (สถานะ == "on")
-    
-    ant_settings["anti_link"][guild_id] = is_on
-    ant_settings["anti_nuke"][guild_id] = is_on
-    ant_settings["anti_spam"][guild_id] = is_on
-
-    embed = discord.Embed(
-        title="🛡️ ตั้งค่าระบบป้องกันความปลอดภัยเซิร์ฟเวอร์",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"สถานะระบบทั้งหมด: **{'🟢 เปิดใช้งานทั้งหมดแล้ว' if is_on else '🔴 ปิดการใช้งานทั้งหมดแล้ว'}**\n\n"
-            "• 🛡️ **Anti-Link (ป้องกันลิงก์):** " + ("`เปิด`" if is_on else "`ปิด`") + "\n"
-            "• 🛡️ **Anti-Nuke (ป้องกันทำลายเซิร์ฟเวอร์):** " + ("`เปิด`" if is_on else "`ปิด`") + "\n"
-            "• 🛡️ **Anti-Spam (ป้องกันสแปมแชท):** " + ("`เปิด`" if is_on else "`ปิด`") + "\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
-        ),
-        color=0x2ECC71 if is_on else 0xE74C3C
-    )
+    ant_settings["anti_link"][interaction.guild.id] = is_on
+    ant_settings["anti_nuke"][interaction.guild.id] = is_on
+    ant_settings["anti_spam"][interaction.guild.id] = is_on
+    embed = discord.Embed(title="🛡️ ตั้งค่าระบบป้องกันทั้งหมด", description=f"สถานะ: **{'🟢 เปิดใช้งานทั้งหมด' if is_on else '🔴 ปิดใช้งานทั้งหมด'}**", color=0x2ECC71 if is_on else 0xE74C3C)
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
-@bot.tree.command(name="ป้องกันลิงก์", description="🛡️ เปิด/ปิดระบบป้องกันลิงก์แปลกปลอมในเซิร์ฟเวอร์")
+@bot.tree.command(name="ป้องกันลิงก์", description="🛡️ เปิด/ปิดระบบป้องกันลิงก์แปลกปลอม")
 @app_commands.choices(สถานะ=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
     app_commands.Choice(name="ปิดการใช้งาน (Disable)", value="off")
 ])
 @app_commands.checks.has_permissions(administrator=True)
 async def anti_link(interaction: discord.Interaction, สถานะ: str):
-    guild_id = interaction.guild.id
     is_on = (สถานะ == "on")
-    ant_settings["anti_link"][guild_id] = is_on
+    ant_settings["anti_link"][interaction.guild.id] = is_on
+    await interaction.response.send_message(embed=discord.Embed(title="🛡️ Anti-Link", description=f"สถานะ: {'🟢 เปิด' if is_on else '🔴 ปิด'}", color=0x2ECC71 if is_on else 0xE74C3C), ephemeral=False)
 
-    embed = discord.Embed(
-        title="🛡️ ระบบป้องกันลิงก์ (Anti-Link)",
-        description=f"สถานะระบบ: **{'🟢 เปิดใช้งานแล้ว' if is_on else '🔴 ปิดการใช้งานแล้ว'}**",
-        color=0x2ECC71 if is_on else 0xE74C3C
-    )
-    await interaction.response.send_message(embed=embed, ephemeral=False)
-
-@bot.tree.command(name="ป้องกันนุกเกอร์", description="🛡️ เปิด/ปิดระบบป้องกัน Nuker / ป้องกันการทำลายเซิร์ฟเวอร์")
+@bot.tree.command(name="ป้องกันนุกเกอร์", description="🛡️ เปิด/ปิดระบบป้องกัน Nuker")
 @app_commands.choices(สถานะ=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
     app_commands.Choice(name="ปิดการใช้งาน (Disable)", value="off")
 ])
 @app_commands.checks.has_permissions(administrator=True)
 async def anti_nuke(interaction: discord.Interaction, สถานะ: str):
-    guild_id = interaction.guild.id
     is_on = (สถานะ == "on")
-    ant_settings["anti_nuke"][guild_id] = is_on
+    ant_settings["anti_nuke"][interaction.guild.id] = is_on
+    await interaction.response.send_message(embed=discord.Embed(title="🛡️ Anti-Nuke", description=f"สถานะ: {'🟢 เปิด' if is_on else '🔴 ปิด'}", color=0x2ECC71 if is_on else 0xE74C3C), ephemeral=False)
 
-    embed = discord.Embed(
-        title="🛡️ ระบบป้องกัน Nuker (Anti-Nuke)",
-        description=f"สถานะระบบ: **{'🟢 เปิดใช้งานแล้ว' if is_on else '🔴 ปิดการใช้งานแล้ว'}**",
-        color=0x2ECC71 if is_on else 0xE74C3C
-    )
-    await interaction.response.send_message(embed=embed, ephemeral=False)
-
-@bot.tree.command(name="ป้องกันสแปม", description="🛡️ เปิด/ปิดระบบป้องกันสแปมข้อความรัวๆ")
+@bot.tree.command(name="ป้องกันสแปม", description="🛡️ เปิด/ปิดระบบป้องกันสแปมแชท")
 @app_commands.choices(สถานะ=[
     app_commands.Choice(name="เปิดการใช้งาน (Enable)", value="on"),
     app_commands.Choice(name="ปิดการใช้งาน (Disable)", value="off")
 ])
 @app_commands.checks.has_permissions(administrator=True)
 async def anti_spam(interaction: discord.Interaction, สถานะ: str):
-    guild_id = interaction.guild.id
     is_on = (สถานะ == "on")
-    ant_settings["anti_spam"][guild_id] = is_on
-
-    embed = discord.Embed(
-        title="🛡️ ระบบป้องกันสแปม (Anti-Spam)",
-        description=f"สถานะระบบ: **{'🟢 เปิดใช้งานแล้ว' if is_on else '🔴 ปิดการใช้งานแล้ว'}**",
-        color=0x2ECC71 if is_on else 0xE74C3C
-    )
-    await interaction.response.send_message(embed=embed, ephemeral=False)
+    ant_settings["anti_spam"][interaction.guild.id] = is_on
+    await interaction.response.send_message(embed=discord.Embed(title="🛡️ Anti-Spam", description=f"สถานะ: {'🟢 เปิด' if is_on else '🔴 ปิด'}", color=0x2ECC71 if is_on else 0xE74C3C), ephemeral=False)
 
 @bot.tree.command(name="แบนสมาชิก", description="🔨 แบนสมาชิกออกจากเซิร์ฟเวอร์")
 @app_commands.describe(สมาชิก="สมาชิกที่ต้องการแบน", เหตุผล="เหตุผลในการแบน")
 @app_commands.checks.has_permissions(ban_members=True)
 async def ban(interaction: discord.Interaction, สมาชิก: discord.Member, เหตุผล: str = "ไม่ระบุเหตุผล"):
     try:
-        awaitสมาชิก.ban(reason=เหตุผล)
-        embed = discord.Embed(
-            title="🔨 ดำเนินการแบนสมาชิกสำเร็จ",
-            description=f"ผู้ใช้งาน: **{สมาชิก.mention}** ถูกแบนออกจากเซิร์ฟเวอร์\nเหตุผล: `{เหตุผล}`",
-            color=0xE74C3C
-        )
+        await สมาชิก.ban(reason=เหตุผล)
+        embed = discord.Embed(title="🔨 แบนสมาชิกสำเร็จ", description=f"แบน {สมาชิก.mention} เรียบร้อย\nเหตุผล: `{เหตุผล}`", color=0xE74C3C)
         await interaction.response.send_message(embed=embed, ephemeral=False)
     except Exception as e:
-        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการแบน: {e}", ephemeral=True)
+        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-@bot.tree.command(name="สร้างลิงก์เชิญ", description="🔗 สร้างและส่งลิงค์เชิญเข้าเซิร์ฟเวอร์แบบถาวร")
+@bot.tree.command(name="สร้างลิงก์เชิญ", description="🔗 สร้างและส่งลิงก์เชิญเข้าเซิร์ฟเวอร์ถาวร")
 async def invite(interaction: discord.Interaction):
     try:
         target_channel = interaction.channel
@@ -728,56 +550,39 @@ async def invite(interaction: discord.Interaction):
                 if c.permissions_for(interaction.guild.me).create_instant_invite:
                     target_channel = c
                     break
-
         if hasattr(target_channel, "create_invite"):
             invite_link = await target_channel.create_invite(max_age=0, max_uses=0)
-            embed = discord.Embed(
-                title="🔗 ลิงก์เชิญเข้าสู่เซิร์ฟเวอร์",
-                description=f"คุณสามารถคัดลอกลิงก์ด้านล่างนี้เพื่อเชิญเพื่อนๆ เข้าเซิร์ฟเวอร์ได้เลยครับ:\n\n👉 {invite_link}",
-                color=0x3498DB
-            )
+            embed = discord.Embed(title="🔗 ลิงก์เชิญเข้าสู่เซิร์ฟเวอร์", description=f"👉 {invite_link}", color=0x3498DB)
             await interaction.response.send_message(embed=embed, ephemeral=False)
         else:
-            await interaction.response.send_message("❌ ไม่พบช่องแชทที่มีสิทธิ์สร้างลิงก์เชิญในขณะนี้", ephemeral=True)
+            await interaction.response.send_message("❌ ไม่พบช่องที่สามารถสร้างลิงก์เชิญได้", ephemeral=True)
     except Exception as e:
-        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาดในการสร้างลิงก์เชิญ: {e}", ephemeral=True)
+        await interaction.response.send_message(f"❌ เกิดข้อผิดพลาด: {e}", ephemeral=True)
 
-@bot.tree.command(name="สถิติเซิร์ฟเวอร์", description="📊 แสดงสถิติจำนวนสมาชิกทั้งหมดภายในเซิร์ฟเวอร์")
+@bot.tree.command(name="สถิติเซิร์ฟเวอร์", description="📊 แสดงสถิติจำนวนสมาชิกภายในเซิร์ฟเวอร์")
 async def stats(interaction: discord.Interaction):
     guild = interaction.guild
-    total_members = guild.member_count
-    bots_count = sum(m.bot for m in guild.members)
-    humans_count = total_members - bots_count
-
+    total = guild.member_count
+    bots = sum(m.bot for m in guild.members)
     embed = discord.Embed(
-        title=f"📊 สถิติข้อมูลเซิร์ฟเวอร์: {guild.name}",
-        description=(
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"• 👥 **สมาชิกทั้งหมด:** `{total_members}` คน\n"
-            f"• 🧑 **ผู้ใช้งานจริง (Humans):** `{humans_count}` คน\n"
-            f"• 🤖 **บอทในระบบ (Bots):** `{bots_count}` ตัว\n"
-            "━━━━━━━━━━━━━━━━━━━━━━"
-        ),
+        title=f"📊 สถิติเซิร์ฟเวอร์: {guild.name}",
+        description=f"• 👥 สมาชิกทั้งหมด: `{total}`\n• 🧑 ผู้ใช้งานจริง: `{total - bots}`\n• 🤖 บอท: `{bots}`",
         color=0x3498DB
     )
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
-    embed.set_footer(text=f"เรียกดูโดย: {interaction.user.name}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
-    
     await interaction.response.send_message(embed=embed, ephemeral=False)
 
 # ==========================================
-# --- ส่วนการรันเว็บเซิร์ฟเวอร์และบอท Discord ---
+# --- รันเว็บเซิร์ฟเวอร์และบอท Discord ---
 # ==========================================
 if __name__ == "__main__":
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-    print("🌐 Flask Web Server started in background thread.")
 
     TOKEN = os.environ.get("BOT_TOKEN", "ใส่_Discord_Bot_Token_ของคุณที่นี่")
-    
     if TOKEN == "ใส่_Discord_Bot_Token_ของคุณที่นี่":
-        print("⚠️ คำเตือน: กรุณาใส่ Token ของบอท Discord ให้ถูกต้องก่อนเริ่มรันระบบ!")
+        print("⚠️ กรุณาใส่ Bot Token ให้ถูกต้อง!")
     else:
         bot.run(TOKEN)
