@@ -1,4 +1,4 @@
-import discord, os, asyncio
+import asyncio, os, discord
 from discord import app_commands
 from discord.ext import commands
 from flask import Flask
@@ -14,7 +14,7 @@ Thread(target=lambda: app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 80
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# --- 3. ฟังก์ชัน Sync คำสั่งอัตโนมัติ (แก้ปัญหา / ไม่ขึ้น) ---
+# --- 3. ฟังก์ชัน Sync คำสั่งอัตโนมัติ ---
 @bot.event
 async def on_ready():
     print(f"✅ บอท {bot.user} เชื่อมต่อแล้ว!")
@@ -40,8 +40,13 @@ async def on_member_join(member):
     channel = discord.utils.get(member.guild.text_channels, name="welcome")
     if channel: await channel.send(f"🎉 ยินดีต้อนรับ {member.mention} สู่เซิร์ฟเวอร์!")
 
-# --- 6. ระบบ Verify (ปุ่มกด) ---
-@bot.tree.command(name="setup_verify", description="สร้างปุ่มยืนยันตัวตน")
+
+# ==========================================
+# 📌 รวมคำสั่ง Slash Commands ทั้งหมด (ครบ 9 คำสั่ง)
+# ==========================================
+
+# 1. ระบบ Verify
+@bot.tree.command(name="setup_verify", description="1. สร้างปุ่มยืนยันตัวตน")
 async def setup_verify(interaction: discord.Interaction):
     class VerifyView(discord.ui.View):
         def __init__(self): super().__init__(timeout=None)
@@ -53,8 +58,8 @@ async def setup_verify(interaction: discord.Interaction):
     await interaction.channel.send("กดปุ่มเพื่อรับยศ:", view=VerifyView())
     await interaction.response.send_message("สร้างระบบ Verify แล้ว", ephemeral=True)
 
-# --- 7. ระบบ Ticket (สร้างห้องแจ้งปัญหา) ---
-@bot.tree.command(name="setup_ticket", description="สร้างระบบ Ticket")
+# 2. ระบบ Ticket
+@bot.tree.command(name="setup_ticket", description="2. สร้างระบบ Ticket แจ้งปัญหา")
 async def setup_ticket(interaction: discord.Interaction):
     class TicketView(discord.ui.View):
         def __init__(self): super().__init__(timeout=None)
@@ -65,16 +70,62 @@ async def setup_ticket(interaction: discord.Interaction):
     await interaction.channel.send("หากมีปัญหา กดปุ่มนี้:", view=TicketView())
     await interaction.response.send_message("สร้างระบบ Ticket แล้ว", ephemeral=True)
 
-# --- 8. ระบบข้อมูลเซิร์ฟเวอร์ ---
-@bot.tree.command(name="stats", description="ดูสถานะเซิร์ฟเวอร์")
+# 3. ระบบ Stats (ดูสถานะเซิร์ฟเวอร์)
+@bot.tree.command(name="stats", description="3. ดูสถานะและข้อมูลเบื้องต้นของเซิร์ฟเวอร์")
 async def stats(interaction: discord.Interaction):
-    await interaction.response.send_message(f"👥 สมาชิก: {interaction.guild.member_count} คน")
+    await interaction.response.send_message(f"👥 สมาชิกทั้งหมดในเซิร์ฟเวอร์: {interaction.guild.member_count} คน")
 
-# --- 9. ระบบประกาศ (Admin) ---
-@bot.tree.command(name="announce", description="ประกาศข่าวสาร")
+# 4. ระบบ Announce (ประกาศข้อความ)
+@bot.tree.command(name="announce", description="4. ประกาศข่าวสารสำคัญในห้อง")
 async def announce(interaction: discord.Interaction, text: str):
     await interaction.channel.send(f"📢 **ประกาศ:** {text}")
-    await interaction.response.send_message("ประกาศแล้ว", ephemeral=True)
+    await interaction.response.send_message("ประกาศเรียบร้อย", ephemeral=True)
+
+# 5. ระบบ Kick (เตะสมาชิก)
+@bot.tree.command(name="kick", description="5. เตะสมาชิกออกจากเซิร์ฟเวอร์")
+@app_commands.describe(member="เลือกสมาชิกที่ต้องการเตะ", reason="เหตุผล")
+async def kick(interaction: discord.Interaction, member: discord.Member, reason: str = "ไม่ระบุเหตุผล"):
+    if not interaction.user.guild_permissions.kick_members:
+        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้!", ephemeral=True)
+    await member.kick(reason=reason)
+    await interaction.response.send_message(f"👢 เตะ {member.name} ออกจากเซิร์ฟเวอร์แล้ว เพราะ: {reason}")
+
+# 6. ระบบ Ban (แบนสมาชิก)
+@bot.tree.command(name="ban", description="6. แบนสมาชิกออกจากเซิร์ฟเวอร์")
+@app_commands.describe(member="เลือกสมาชิกที่ต้องการแบน", reason="เหตุผล")
+async def ban(interaction: discord.Interaction, member: discord.Member, reason: str = "ไม่ระบุเหตุผล"):
+    if not interaction.user.guild_permissions.ban_members:
+        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้!", ephemeral=True)
+    await member.ban(reason=reason)
+    await interaction.response.send_message(f"🔨 แบน {member.name} ออกจากเซิร์ฟเวอร์แล้ว เพราะ: {reason}")
+
+# 7. ระบบ Clear (ลบข้อความ)
+@bot.tree.command(name="clear", description="7. ลบข้อความในแชทจำนวนตามที่กำหนด")
+@app_commands.describe(amount="จำนวนข้อความที่ต้องการลบ (1-100)")
+async def clear(interaction: discord.Interaction, amount: int):
+    if not interaction.user.guild_permissions.manage_messages:
+        return await interaction.response.send_message("❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้!", ephemeral=True)
+    await interaction.channel.purge(limit=amount)
+    await interaction.response.send_message(f"🗑️ ลบข้อความไปแล้ว {amount} ข้อความ", ephemeral=True)
+
+# 8. ระบบ Userinfo (ดูข้อมูลสมาชิก)
+@bot.tree.command(name="userinfo", description="8. ดูข้อมูลรายละเอียดของสมาชิกคนนั้นๆ")
+@app_commands.describe(member="เลือกสมาชิกที่ต้องการดูข้อมูล")
+async def userinfo(interaction: discord.Interaction, member: discord.Member = None):
+    target = member or interaction.user
+    embed = discord.Embed(title=f"ข้อมูลของ: {target.name}", color=discord.Color.blue())
+    embed.set_thumbnail(url=target.display_avatar.url)
+    embed.add_field(name="ID", value=target.id, inline=True)
+    embed.add_field(name="เข้าร่วมเมื่อ", value=target.joined_at.strftime("%Y-%m-%d"), inline=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+# 9. ระบบ Botinfo (ดูข้อมูลบอท)
+@bot.tree.command(name="botinfo", description="9. ดูสถานะและข้อมูลของบอทตัวนี้")
+async def botinfo(interaction: discord.Interaction):
+    embed = discord.Embed(title="🤖 ข้อมูลบอท", description="บอทสารพัดประโยชน์ All-in-One", color=discord.Color.green())
+    embed.add_field(name="ชื่อบอท", value=bot.user.name, inline=True)
+    embed.add_field(name="ความหน่วง (Ping)", value=f"{round(bot.latency * 1000)} ms", inline=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # รันบอท
 bot.run(os.environ.get("DISCORD_TOKEN"))
