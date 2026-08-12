@@ -7,7 +7,6 @@ from discord.ext import commands
 from flask import Flask
 import yt_dlp
 
-# --- ส่วนของ Flask (หลอก Render) ---
 app = Flask("")
 
 
@@ -26,9 +25,9 @@ def keep_alive():
   t.start()
 
 
-# --- ส่วนของบอท Discord (ใช้ app_commands) ---
 intents = discord.Intents.default()
 intents.voice_states = True
+intents.message_content = True
 
 
 class MusicBot(commands.Bot):
@@ -37,7 +36,6 @@ class MusicBot(commands.Bot):
     super().__init__(command_prefix="!", intents=intents)
 
   async def setup_hook(self):
-    # สั่งซิงค์ Slash Commands กับ Discord
     await self.tree.sync()
     print("Synced slash commands.")
 
@@ -95,9 +93,6 @@ async def on_ready():
   print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
 
 
-# --- สร้าง Slash Commands ---
-
-
 @bot.tree.command(name="join", description="ให้บอทเข้าห้องเสียงที่คุณอยู่")
 async def join(interaction: discord.Interaction):
   if not interaction.user.voice:
@@ -122,7 +117,7 @@ async def play(interaction: discord.Interaction, query: str):
         "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
     )
 
-  await interaction.response.defer()  # รอประมวลผลสักครู่ (ป้องกันบอทเออเรอร์ว่าใช้งานนานเกินไป)
+  await interaction.response.defer()
 
   if not interaction.guild.voice_client:
     await interaction.user.voice.channel.connect()
@@ -133,6 +128,28 @@ async def play(interaction: discord.Interaction, query: str):
   interaction.guild.voice_client.play(player)
 
   await interaction.followup.send(f"🎵 กำลังเล่น: **{player.title}**")
+
+
+@bot.tree.command(name="stop", description="หยุดเพลงชั่วคราว")
+async def stop(interaction: discord.Interaction):
+  if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
+    interaction.guild.voice_client.pause()
+    await interaction.response.send_message("⏸️ หยุดเพลงชั่วคราวแล้ว")
+  else:
+    await interaction.response.send_message(
+        "❌ บอทไม่ได้กำลังเล่นเพลงอยู่", ephemeral=True
+    )
+
+
+@bot.tree.command(name="resume", description="เล่นเพลงต่อ")
+async def resume(interaction: discord.Interaction):
+  if interaction.guild.voice_client and interaction.guild.voice_client.is_paused():
+    interaction.guild.voice_client.resume()
+    await interaction.response.send_message("▶️ เล่นเพลงต่อแล้ว")
+  else:
+    await interaction.response.send_message(
+        "❌ เพลงไม่ได้ถูกหยุดไว้", ephemeral=True
+    )
 
 
 @bot.tree.command(name="leave", description="ให้บอทออกจากห้องเสียง")
@@ -146,9 +163,7 @@ async def leave(interaction: discord.Interaction):
     )
 
 
-# รันเว็บเซิร์ฟเวอร์หลอก Render
 keep_alive()
 
-# รันบอท
 TOKEN = os.environ.get("DISCORD_TOKEN")
 bot.run(TOKEN)
