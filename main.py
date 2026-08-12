@@ -1,132 +1,76 @@
-import asyncio
-import os
+import asyncio, os, discord
 from threading import Thread
-import discord
 from discord import app_commands
 from discord.ext import commands
 from flask import Flask
 
-# --- ส่วนของ Flask (รันเว็บเซิร์ฟเวอร์หลอก Render ให้บอทออนไลน์) ---
+# 1. ระบบ Keep-Alive (กัน Render ปิดบอท)
 app = Flask("")
-
-
 @app.route("/")
-def home():
-  return "Amazing-like Bot is running!"
+def home(): return "Bot is Online!"
+def run_web(): app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+Thread(target=run_web).start()
 
-
-def run_web():
-  port = int(os.environ.get("PORT", 8080))
-  app.run(host="0.0.0.0", port=port)
-
-
-def keep_alive():
-  t = Thread(target=run_web)
-  t.start()
-
-
-# --- ส่วนตั้งค่าบอท Discord ---
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.voice_states = True
-
-
-class MultiBot(commands.Bot):
-
-  def __init__(self):
-    super().__init__(command_prefix="!", intents=intents)
-
-  async def setup_hook(self):
-    await self.tree.sync()
-    print("Synced slash commands successfully.")
-
-
-bot = MultiBot()
-
+# 2. ตั้งค่า Intents
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="!", intents=intents)
 
 @bot.event
 async def on_ready():
-  print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
+    await bot.tree.sync()
+    print(f"✅ บอท {bot.user} พร้อมใช้งาน!")
 
-
-# --- ระบบที่ 1: ต้อนรับสมาชิกใหม่ (Welcome) ---
+# 3. ระบบต้อนรับ (Welcome)
 @bot.event
 async def on_member_join(member):
-  # หาช่องชื่อว่า welcome หรือ general อัตโนมัติ
-  channel = discord.utils.get(member.guild.text_channels, name="welcome")
-  if not channel:
-    channel = discord.utils.get(member.guild.text_channels, name="general")
+    channel = discord.utils.get(member.guild.text_channels, name="welcome")
+    if channel: await channel.send(f"ยินดีต้อนรับ {member.mention} เข้าสู่เซิร์ฟเวอร์!")
 
-  if channel:
-    embed = discord.Embed(
-        title=f"ยินดีต้อนรับคุณ {member.name}!",
-        description=(
-            "ยินดีต้อนรับเข้าสู่คอมมูนิตี้ของเรา ขอให้สนุกกับเซิร์ฟเวอร์ครับ 🎉"
-        ),
-        color=discord.Color.blurple(),
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    await channel.send(embed=embed)
+# 4. ระบบ Verify (ปุ่มกดรับยศ)
+class VerifyView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="✅ ยืนยันตัวตน", style=discord.ButtonStyle.green, custom_id="verify")
+    async def verify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        role = discord.utils.get(interaction.guild.roles, name="Member")
+        await interaction.user.add_roles(role)
+        await interaction.response.send_message("คุณได้รับยศแล้ว!", ephemeral=True)
 
+# 5. ระบบ Ticket (สร้างห้องแจ้งปัญหา)
+class TicketView(discord.ui.View):
+    def __init__(self): super().__init__(timeout=None)
+    @discord.ui.button(label="🎫 แจ้งปัญหา", style=discord.ButtonStyle.blurple, custom_id="ticket")
+    async def ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        channel = await interaction.guild.create_text_channel(f"ticket-{interaction.user.name}")
+        await interaction.response.send_message(f"สร้างห้องแล้ว: {channel.mention}", ephemeral=True)
 
-# --- ระบบที่ 2: Slash Command ประกาศข้อความ (Announce) ---
-@bot.tree.command(name="announce", description="ส่งประกาศสำคัญในเซิร์ฟเวอร์")
-@app_commands.describe(message="ข้อความที่ต้องการประกาศ")
-async def announce(interaction: discord.Interaction, message: str):
-  if not interaction.user.guild_permissions.administrator:
-    return await interaction.response.send_message(
-        "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้!", ephemeral=True
-    )
+# 6. ระบบป้องกันคำหยาบ (Anti-Swear)
+@bot.event
+async def on_message(message):
+    bad_words = ["ควย", "เหี้ย", "สัส"] # เพิ่มคำที่นี่
+    if any(word in message.content for word in bad_words):
+        await message.delete()
+        await message.channel.send(f"{message.author.mention} ห้ามใช้คำหยาบครับ!")
+    await bot.process_commands(message)
 
-  embed = discord.Embed(
-      title="📢 ประกาศจากผู้ดูแลเซิร์ฟเวอร์",
-      description=message,
-      color=discord.Color.gold(),
-  )
-  embed.set_footer(text=f"ประกาศโดย: {interaction.user.name}")
+# 7. ระบบสถานะเซิร์ฟเวอร์ (Stats/Status)
+@bot.tree.command(name="stats", description="ดูสถานะเซิร์ฟเวอร์")
+async def stats(interaction: discord.Interaction):
+    await interaction.response.send_message(f"สมาชิกทั้งหมด: {interaction.guild.member_count} คน")
 
-  await interaction.response.send_message(
-      "✅ ส่งประกาศเรียบร้อยแล้ว!", ephemeral=True
-  )
-  await interaction.channel.send(embed=embed)
+# 8. ระบบจัดการแอดมิน (Admin Panel)
+@bot.tree.command(name="announce", description="ประกาศข่าวสาร")
+async def announce(interaction: discord.Interaction, text: str):
+    await interaction.channel.send(f"📢 ประกาศ: {text}")
+    await interaction.response.send_message("ส่งแล้ว", ephemeral=True)
 
+# 9. ระบบปุ่มเปิดเมนู (Main Control Panel)
+@bot.tree.command(name="setup", description="เปิดเมนูตั้งค่าหลัก")
+async def setup(interaction: discord.Interaction):
+    view = discord.ui.View()
+    # ปุ่มในเมนูหลัก
+    btn_verify = discord.ui.Button(label="ระบบยืนยันตัวตน", style=discord.ButtonStyle.green, custom_id="v")
+    btn_ticket = discord.ui.Button(label="ระบบแจ้งปัญหา", style=discord.ButtonStyle.blurple, custom_id="t")
+    view.add_item(btn_verify); view.add_item(btn_ticket)
+    await interaction.response.send_message("เลือกเมนูที่ต้องการ:", view=view)
 
-# --- ระบบที่ 3: Slash Command เช็คสถานะบอท (Ping) ---
-@bot.tree.command(name="ping", description="เช็คความเร็วและสถานะของบอท")
-async def ping(interaction: discord.Interaction):
-  latency = round(bot.latency * 1000)
-  await interaction.response.send_message(
-      f"🏓 Pong! ความหน่วงของบอท: **{latency} ms**", ephemeral=True
-  )
-
-
-# --- ระบบที่ 4: Slash Command ข้อมูลเซิร์ฟเวอร์ (Server Info) ---
-@bot.tree.command(
-    name="serverinfo", description="แสดงข้อมูลเบื้องต้นของเซิร์ฟเวอร์นี้"
-)
-async def serverinfo(interaction: discord.Interaction):
-  guild = interaction.guild
-  embed = discord.Embed(
-      title=f"📊 ข้อมูลเซิร์ฟเวอร์: {guild.name}", color=discord.Color.green()
-  )
-  embed.add_field(
-      name="👑 เจ้าของเซิร์ฟเวอร์", value=guild.owner, inline=True
-  )
-  embed.add_field(
-      name="👥 สมาชิกทั้งหมด", value=f"{guild.member_count} คน", inline=True
-  )
-  embed.add_field(
-      name="💬 จำนวนห้อง",
-      value=f"{len(guild.text_channels)} ข้อความ / {len(guild.voice_channels)} เสียง",
-      inline=False,
-  )
-  await interaction.response.send_message(embed=embed)
-
-
-# เริ่มต้นระบบเว็บจำลอง
-keep_alive()
-
-# ดึง Token จาก Environment Variables ของ Render
-TOKEN = os.environ.get("DISCORD_TOKEN")
-bot.run(TOKEN)
+bot.run(os.environ.get("DISCORD_TOKEN"))
