@@ -100,7 +100,7 @@ async def join(interaction: discord.Interaction):
         "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
     )
 
-  await interaction.response.defer()
+  await interaction.response.defer(thinking=True)
   channel = interaction.user.voice.channel
   if interaction.guild.voice_client:
     await interaction.guild.voice_client.move_to(channel)
@@ -117,8 +117,7 @@ async def play(interaction: discord.Interaction, query: str):
         "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
     )
 
-  # ป้องกันอาการบอทคิดนานเกินไป
-  await interaction.response.defer()
+  await interaction.response.defer(thinking=True)
 
   if not interaction.guild.voice_client:
     await interaction.user.voice.channel.connect()
