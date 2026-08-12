@@ -5,14 +5,14 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from flask import Flask
-import yt_dlp
 
+# --- ส่วนของ Flask (รันเว็บเซิร์ฟเวอร์หลอก Render ให้บอทออนไลน์) ---
 app = Flask("")
 
 
 @app.route("/")
 def home():
-  return "Discord Music Bot is running!"
+  return "Amazing-like Bot is running!"
 
 
 def run_web():
@@ -25,67 +25,24 @@ def keep_alive():
   t.start()
 
 
+# --- ส่วนตั้งค่าบอท Discord ---
 intents = discord.Intents.default()
-intents.voice_states = True
 intents.message_content = True
+intents.members = True
+intents.voice_states = True
 
 
-class MusicBot(commands.Bot):
+class MultiBot(commands.Bot):
 
   def __init__(self):
     super().__init__(command_prefix="!", intents=intents)
 
   async def setup_hook(self):
     await self.tree.sync()
-    print("Synced slash commands.")
+    print("Synced slash commands successfully.")
 
 
-bot = MusicBot()
-
-ytdl_format_options = {
-    "format": "bestaudio/best",
-    "restrictfilenames": True,
-    "noplaylist": True,
-    "nocheckcertificate": True,
-    "ignoreerrors": False,
-    "logtostderr": False,
-    "quiet": True,
-    "no_warnings": True,
-    "default_search": "auto",
-    "source_address": "0.0.0.0",
-}
-
-ffmpeg_options = {
-    "before_options": (
-        "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-    ),
-    "options": "-vn",
-}
-
-ytdl = yt_dlp.YoutubeDL(ytdl_format_options)
-
-
-class YTDLSource(discord.PCMVolumeTransformer):
-
-  def __init__(self, source, *, data, volume=0.5):
-    super().__init__(source, volume)
-    self.data = data
-    self.title = data.get("title")
-    self.url = data.get("url")
-
-  @classmethod
-  async def from_url(cls, url, *, loop=None, stream=False):
-    loop = loop or asyncio.get_running_loop()
-    data = await loop.run_in_executor(
-        None, lambda: ytdl.extract_info(url, download=not stream)
-    )
-    if "entries" in data:
-      data = data["entries"][0]
-    filename = data["url"] if stream else ytdl.prepare_filename(data)
-    return cls(
-        discord.FFmpegPCMAudio(filename, **ffmpeg_options),
-        data=data,
-    )
+bot = MultiBot()
 
 
 @bot.event
@@ -93,77 +50,83 @@ async def on_ready():
   print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
 
 
-@bot.tree.command(name="join", description="ให้บอทเข้าห้องเสียงที่คุณอยู่")
-async def join(interaction: discord.Interaction):
-  if not interaction.user.voice:
+# --- ระบบที่ 1: ต้อนรับสมาชิกใหม่ (Welcome) ---
+@bot.event
+async def on_member_join(member):
+  # หาช่องชื่อว่า welcome หรือ general อัตโนมัติ
+  channel = discord.utils.get(member.guild.text_channels, name="welcome")
+  if not channel:
+    channel = discord.utils.get(member.guild.text_channels, name="general")
+
+  if channel:
+    embed = discord.Embed(
+        title=f"ยินดีต้อนรับคุณ {member.name}!",
+        description=(
+            "ยินดีต้อนรับเข้าสู่คอมมูนิตี้ของเรา ขอให้สนุกกับเซิร์ฟเวอร์ครับ 🎉"
+        ),
+        color=discord.Color.blurple(),
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await channel.send(embed=embed)
+
+
+# --- ระบบที่ 2: Slash Command ประกาศข้อความ (Announce) ---
+@bot.tree.command(name="announce", description="ส่งประกาศสำคัญในเซิร์ฟเวอร์")
+@app_commands.describe(message="ข้อความที่ต้องการประกาศ")
+async def announce(interaction: discord.Interaction, message: str):
+  if not interaction.user.guild_permissions.administrator:
     return await interaction.response.send_message(
-        "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
+        "❌ คุณไม่มีสิทธิ์ใช้คำสั่งนี้!", ephemeral=True
     )
 
-  await interaction.response.defer(thinking=True)
-  channel = interaction.user.voice.channel
-  if interaction.guild.voice_client:
-    await interaction.guild.voice_client.move_to(channel)
-  else:
-    await channel.connect()
-  await interaction.followup.send(f"✅ เชื่อมต่อห้อง: **{channel.name}**")
+  embed = discord.Embed(
+      title="📢 ประกาศจากผู้ดูแลเซิร์ฟเวอร์",
+      description=message,
+      color=discord.Color.gold(),
+  )
+  embed.set_footer(text=f"ประกาศโดย: {interaction.user.name}")
+
+  await interaction.response.send_message(
+      "✅ ส่งประกาศเรียบร้อยแล้ว!", ephemeral=True
+  )
+  await interaction.channel.send(embed=embed)
 
 
-@bot.tree.command(name="play", description="เล่นเพลงจากชื่อหรือลิงก์ YouTube")
-@app_commands.describe(query="ชื่อเพลงหรือลิงก์ YouTube")
-async def play(interaction: discord.Interaction, query: str):
-  if not interaction.user.voice:
-    return await interaction.response.send_message(
-        "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
-    )
-
-  await interaction.response.defer(thinking=True)
-
-  if not interaction.guild.voice_client:
-    await interaction.user.voice.channel.connect()
-
-  player = await YTDLSource.from_url(query, loop=bot.loop, stream=True)
-  if interaction.guild.voice_client.is_playing():
-    interaction.guild.voice_client.stop()
-  interaction.guild.voice_client.play(player)
-
-  await interaction.followup.send(f"🎵 กำลังเล่น: **{player.title}**")
+# --- ระบบที่ 3: Slash Command เช็คสถานะบอท (Ping) ---
+@bot.tree.command(name="ping", description="เช็คความเร็วและสถานะของบอท")
+async def ping(interaction: discord.Interaction):
+  latency = round(bot.latency * 1000)
+  await interaction.response.send_message(
+      f"🏓 Pong! ความหน่วงของบอท: **{latency} ms**", ephemeral=True
+  )
 
 
-@bot.tree.command(name="stop", description="หยุดเพลงชั่วคราว")
-async def stop(interaction: discord.Interaction):
-  if interaction.guild.voice_client and interaction.guild.voice_client.is_playing():
-    interaction.guild.voice_client.pause()
-    await interaction.response.send_message("⏸️ หยุดเพลงชั่วคราวแล้ว")
-  else:
-    await interaction.response.send_message(
-        "❌ บอทไม่ได้กำลังเล่นเพลงอยู่", ephemeral=True
-    )
+# --- ระบบที่ 4: Slash Command ข้อมูลเซิร์ฟเวอร์ (Server Info) ---
+@bot.tree.command(
+    name="serverinfo", description="แสดงข้อมูลเบื้องต้นของเซิร์ฟเวอร์นี้"
+)
+async def serverinfo(interaction: discord.Interaction):
+  guild = interaction.guild
+  embed = discord.Embed(
+      title=f"📊 ข้อมูลเซิร์ฟเวอร์: {guild.name}", color=discord.Color.green()
+  )
+  embed.add_field(
+      name="👑 เจ้าของเซิร์ฟเวอร์", value=guild.owner, inline=True
+  )
+  embed.add_field(
+      name="👥 สมาชิกทั้งหมด", value=f"{guild.member_count} คน", inline=True
+  )
+  embed.add_field(
+      name="💬 จำนวนห้อง",
+      value=f"{len(guild.text_channels)} ข้อความ / {len(guild.voice_channels)} เสียง",
+      inline=False,
+  )
+  await interaction.response.send_message(embed=embed)
 
 
-@bot.tree.command(name="resume", description="เล่นเพลงต่อ")
-async def resume(interaction: discord.Interaction):
-  if interaction.guild.voice_client and interaction.guild.voice_client.is_paused():
-    interaction.guild.voice_client.resume()
-    await interaction.response.send_message("▶️ เล่นเพลงต่อแล้ว")
-  else:
-    await interaction.response.send_message(
-        "❌ เพลงไม่ได้ถูกหยุดไว้", ephemeral=True
-    )
-
-
-@bot.tree.command(name="leave", description="ให้บอทออกจากห้องเสียง")
-async def leave(interaction: discord.Interaction):
-  if interaction.guild.voice_client:
-    await interaction.guild.voice_client.disconnect()
-    await interaction.response.send_message("👋 บอทออกจากห้องแล้ว")
-  else:
-    await interaction.response.send_message(
-        "❌ บอทไม่ได้อยู่ในห้องเสียง", ephemeral=True
-    )
-
-
+# เริ่มต้นระบบเว็บจำลอง
 keep_alive()
 
+# ดึง Token จาก Environment Variables ของ Render
 TOKEN = os.environ.get("DISCORD_TOKEN")
 bot.run(TOKEN)
