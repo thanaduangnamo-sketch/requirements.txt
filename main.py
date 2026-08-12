@@ -99,14 +99,14 @@ async def join(interaction: discord.Interaction):
     return await interaction.response.send_message(
         "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
     )
+
+  await interaction.response.defer()
   channel = interaction.user.voice.channel
   if interaction.guild.voice_client:
     await interaction.guild.voice_client.move_to(channel)
   else:
     await channel.connect()
-  await interaction.response.send_message(
-      f"✅ เชื่อมต่อห้อง: **{channel.name}**"
-  )
+  await interaction.followup.send(f"✅ เชื่อมต่อห้อง: **{channel.name}**")
 
 
 @bot.tree.command(name="play", description="เล่นเพลงจากชื่อหรือลิงก์ YouTube")
@@ -117,6 +117,7 @@ async def play(interaction: discord.Interaction, query: str):
         "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
     )
 
+  # ป้องกันอาการบอทคิดนานเกินไป
   await interaction.response.defer()
 
   if not interaction.guild.voice_client:
