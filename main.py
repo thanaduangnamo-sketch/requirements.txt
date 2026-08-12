@@ -2,11 +2,12 @@ import asyncio
 import os
 from threading import Thread
 import discord
+from discord import app_commands
 from discord.ext import commands
 from flask import Flask
 import yt_dlp
 
-# --- ส่วนของ Flask (เพื่อให้ Render เปิดพอร์ตและไม่ปิดบอท) ---
+# --- ส่วนของ Flask (หลอก Render) ---
 app = Flask("")
 
 
@@ -16,7 +17,6 @@ def home():
 
 
 def run_web():
-  # Render จะกำหนด Port มาให้ทาง Environment Variable ชื่อ PORT
   port = int(os.environ.get("PORT", 8080))
   app.run(host="0.0.0.0", port=port)
 
@@ -26,12 +26,23 @@ def keep_alive():
   t.start()
 
 
-# --- ส่วนของบอท Discord (โค้ดเดิม) ---
+# --- ส่วนของบอท Discord (ใช้ app_commands) ---
 intents = discord.Intents.default()
-intents.message_content = True
 intents.voice_states = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
+
+class MusicBot(commands.Bot):
+
+  def __init__(self):
+    super().__init__(command_prefix="!", intents=intents)
+
+  async def setup_hook(self):
+    # สั่งซิงค์ Slash Commands กับ Discord
+    await self.tree.sync()
+    print("Synced slash commands.")
+
+
+bot = MusicBot()
 
 ytdl_format_options = {
     "format": "bestaudio/best",
@@ -84,44 +95,60 @@ async def on_ready():
   print(f"Logged in as {bot.user.name} (ID: {bot.user.id})")
 
 
-@bot.command(name="join")
-async def join(ctx):
-  if not ctx.author.voice:
-    return await ctx.send("❌ คุณต้องเข้าห้องเสียงก่อน!")
-  channel = ctx.author.voice.channel
-  if ctx.voice_client:
-    await ctx.voice_client.move_to(channel)
+# --- สร้าง Slash Commands ---
+
+
+@bot.tree.command(name="join", description="ให้บอทเข้าห้องเสียงที่คุณอยู่")
+async def join(interaction: discord.Interaction):
+  if not interaction.user.voice:
+    return await interaction.response.send_message(
+        "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
+    )
+  channel = interaction.user.voice.channel
+  if interaction.guild.voice_client:
+    await interaction.guild.voice_client.move_to(channel)
   else:
     await channel.connect()
-  await ctx.send(f"✅ เชื่อมต่อห้อง: **{channel.name}**")
+  await interaction.response.send_message(
+      f"✅ เชื่อมต่อห้อง: **{channel.name}**"
+  )
 
 
-@bot.command(name="play")
-async def play(ctx, *, query):
-  if not ctx.author.voice:
-    return await ctx.send("❌ คุณต้องเข้าห้องเสียงก่อน!")
-  if not ctx.voice_client:
-    await ctx.author.voice.channel.connect()
+@bot.tree.command(name="play", description="เล่นเพลงจากชื่อหรือลิงก์ YouTube")
+@app_commands.describe(query="ชื่อเพลงหรือลิงก์ YouTube")
+async def play(interaction: discord.Interaction, query: str):
+  if not interaction.user.voice:
+    return await interaction.response.send_message(
+        "❌ คุณต้องเข้าห้องเสียงก่อน!", ephemeral=True
+    )
 
-  async with ctx.typing():
-    player = await YTDLSource.from_url(query, loop=bot.loop, stream=True)
-    if ctx.voice_client.is_playing():
-      ctx.voice_client.stop()
-    ctx.voice_client.play(player)
+  await interaction.response.defer()  # รอประมวลผลสักครู่ (ป้องกันบอทเออเรอร์ว่าใช้งานนานเกินไป)
 
-  await ctx.send(f"🎵 กำลังเล่น: **{player.title}**")
+  if not interaction.guild.voice_client:
+    await interaction.user.voice.channel.connect()
 
+  player = await YTDLSource.from_url(query, loop=bot.loop, stream=True)
+  if interaction.guild.voice_client.is_playing():
+    interaction.guild.voice_client.stop()
+  interaction.guild.voice_client.play(player)
 
-@bot.command(name="leave")
-async def leave(ctx):
-  if ctx.voice_client:
-    await ctx.voice_client.disconnect()
-    await ctx.send("👋 บอทออกจากห้องแล้ว")
+  await interaction.followup.send(f"🎵 กำลังเล่น: **{player.title}**")
 
 
-# รัน Web Server หลอก Render ไว้ก่อน
+@bot.tree.command(name="leave", description="ให้บอทออกจากห้องเสียง")
+async def leave(interaction: discord.Interaction):
+  if interaction.guild.voice_client:
+    await interaction.guild.voice_client.disconnect()
+    await interaction.response.send_message("👋 บอทออกจากห้องแล้ว")
+  else:
+    await interaction.response.send_message(
+        "❌ บอทไม่ได้อยู่ในห้องเสียง", ephemeral=True
+    )
+
+
+# รันเว็บเซิร์ฟเวอร์หลอก Render
 keep_alive()
 
-# ดึง Token จาก Environment Variable ของ Render (แนะนำวิธีนี้เพื่อความปลอดภัย)
+# รันบอท
 TOKEN = os.environ.get("DISCORD_TOKEN")
 bot.run(TOKEN)
