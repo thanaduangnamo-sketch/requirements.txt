@@ -5,16 +5,17 @@ import discord
 from discord.ext import commands
 import requests
 
-# ตั้งค่าตัวแปร (แก้ไขรูปแบบ os.getenv ให้ถูกต้อง)
 TOKEN = os.getenv("BOT_TOKEN")
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "1532644387639660627")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "6LajyZZ6DfRr42xIESMp_gRRxqXlK1R3")
 GUILD_ID = int(os.getenv("GUILD_ID", "1522224772258332792"))
 ROLE_ID = int(os.getenv("ROLE_ID", "1537445693625598122"))
 
+# ตั้งค่า Intents ให้ถูกต้อง (ใช้ members แทน guild_members)
 intents = discord.Intents.default()
 intents.guilds = True
-intents.guild_members = True
+intents.members = True
+
 bot = commands.Bot(command_prefix="/", intents=intents)
 
 @bot.event
