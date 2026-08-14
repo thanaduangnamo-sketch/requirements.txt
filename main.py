@@ -1,3 +1,4 @@
+import os
 import discord
 from discord.ext import commands
 
@@ -7,7 +8,7 @@ intents.members = True
 
 client = commands.Bot(command_prefix="!", intents=intents)
 
-# ⚙️ ตั้งค่า ID และลิงก์รูปภาพของคุณที่นี่
+# ⚙️ ตั้งค่า ID ยศ และลิงก์รูปภาพของคุณที่นี่
 VERIFY_ROLE_ID = 123456789012345678  # ใส่ ID ยศที่จะให้หลังยืนยัน
 BANNER_IMAGE = "https://i.pinimg.com/736x/d1/50/12/d15012026d745a4302fd5bccffc437a2.jpg"
 
@@ -36,7 +37,6 @@ class VerifyView(discord.ui.View):
 
 @client.event
 async def on_ready():
-    # ลงทะเบียน View ให้คงอยู่ตลอดเวลาป้องกันปุ่มกดไม่ได้หลังบอทรีสตาร์ท
     client.add_view(VerifyView())
     print(f"🚀 บอทออนไลน์แล้วในชื่อ: {client.user}")
 
@@ -47,14 +47,17 @@ async def setup(ctx):
     embed = discord.Embed(
         title="🛡️ **VERIFICATION SYSTEM**",
         description="กรุณากดปุ่ม **\"ยืนยันตัวตน\"** ด้านล่างนี้เพื่อปลดล็อกห้องแชทและเข้าถึงเนื้อหาทั้งหมดภายในเซิร์ฟเวอร์",
-        color=discord.Color.from_rgb(88, 101, 242) # สีสไตล์ Discord Blurple
+        color=discord.Color.from_rgb(88, 101, 242)
     )
-    # เพิ่มรูปภาพที่คุณต้องการ
     embed.set_image(url=BANNER_IMAGE)
     embed.set_footer(text="ระบบรักษาความปลอดภัยอัตโนมัติ", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
 
     await ctx.send(embed=embed, view=VerifyView())
-    await ctx.message.delete() # ลบข้อความคำสั่ง !setup ทิ้งเพื่อความเรียบร้อย
+    await ctx.message.delete()
 
-# รันบอทด้วย Token ของคุณ
-client.run("YOUR_BOT_TOKEN")
+# ดึง Token จาก Environment Variables ของ Render ป้องกัน Token หลุดและแก้ปัญหา Error
+TOKEN = os.getenv("DISCORD_TOKEN")
+if not TOKEN:
+    print("❌ Error: ไม่พบ DISCORD_TOKEN ใน Environment Variables!")
+else:
+    client.run(TOKEN)
