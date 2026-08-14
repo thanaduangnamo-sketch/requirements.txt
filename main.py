@@ -33,15 +33,17 @@ class VerifyBot(commands.Bot):
 
 client = VerifyBot()
 
-# ตั้งค่า ID ยศ และลิงก์รูปภาพใหม่
+# ตั้งค่า ID ยศ
 VERIFY_ROLE_ID = 1537840114380709998
-BANNER_IMAGE = "https://i.pinimg.com/736x/54/50/9d/54509da2a0416b2929bcb2e5e1c35267.jpg"
+
+# 💡 เปลี่ยนมาใช้ลิงก์ภาพที่รองรับการแสดงผลบน Discord แน่นอน (หรือใช้วิธีอัปโหลดรูปเข้า Discord แล้วก๊อปปี้ลิงก์มาวางแทนที่ตรงนี้)
+BANNER_IMAGE = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop"
 
 class VerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.green, custom_id="verify_button_final_v3", emoji="✨")
+    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.green, custom_id="verify_button_final_v4", emoji="✨")
     async def verify_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         role = interaction.guild.get_role(VERIFY_ROLE_ID)
         if not role:
