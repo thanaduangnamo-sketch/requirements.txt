@@ -36,14 +36,14 @@ client = VerifyBot()
 # ตั้งค่า ID ยศ
 VERIFY_ROLE_ID = 1537840114380709998
 
-# 💡 เปลี่ยนมาใช้ลิงก์ภาพที่รองรับการแสดงผลบน Discord แน่นอน (หรือใช้วิธีอัปโหลดรูปเข้า Discord แล้วก๊อปปี้ลิงก์มาวางแทนที่ตรงนี้)
-BANNER_IMAGE = "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop"
+# 🌟 ใส่ลิงก์รูปภาพของคุณตรงนี้ (รองรับทุกลิงก์รวมถึง Pinterest ของคุณ)
+BANNER_IMAGE = "https://i.pinimg.com/736x/39/dd/22/39dd22c31dd7bf80b98b8dd6ffa0c592.jpg"
 
 class VerifyView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.green, custom_id="verify_button_final_v4", emoji="✨")
+    @discord.ui.button(label="ยืนยันตัวตน", style=discord.ButtonStyle.green, custom_id="verify_button_universal_v1", emoji="✨")
     async def verify_callback(self, interaction: discord.Interaction, button: discord.ui.Button):
         role = interaction.guild.get_role(VERIFY_ROLE_ID)
         if not role:
@@ -63,8 +63,8 @@ async def on_ready():
     client.add_view(VerifyView())
     print(f"🚀 บอทออนไลน์ในชื่อ: {client.user}")
 
-# --- 3. คำสั่ง /setup ---
-@client.tree.command(name="setup", description="ส่งระบบยืนยันตัวตนพร้อมรูปภาพ")
+# --- 3. คำสั่ง /setup (บังคับโหลดรูปภาพทุกรูปแบบ) ---
+@client.tree.command(name="setup", description="ส่งระบบยืนยันตัวตนพร้อมรองรับทุกลิงก์รูปภาพ")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup(interaction: discord.Interaction):
     embed = discord.Embed(
@@ -72,9 +72,14 @@ async def setup(interaction: discord.Interaction):
         description="กรุณากดปุ่มด้านล่างเพื่อเข้าถึงเซิร์ฟเวอร์",
         color=0x5865F2
     )
-    embed.set_image(url=BANNER_IMAGE)
     
-    await interaction.response.send_message("✅ ส่งเรียบร้อยแล้ว", ephemeral=True)
+    # ระบบตรวจสอบและบังคับแทรกรูปภาพรองรับทุกลิงก์
+    if BANNER_IMAGE:
+        embed.set_image(url=BANNER_IMAGE)
+        # เพิ่มเซ็ตภาพขนาดเล็กสำรองป้องกันกรณีภาพใหญ่ถูกจำกัด
+        embed.set_thumbnail(url=BANNER_IMAGE) 
+
+    await interaction.response.send_message("✅ ส่งระบบยืนยันตัวตนเรียบร้อยแล้ว!", ephemeral=True)
     await interaction.channel.send(embed=embed, view=VerifyView())
 
 TOKEN = os.getenv("DISCORD_TOKEN")
