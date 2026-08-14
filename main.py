@@ -9,7 +9,7 @@ intents.members = True
 client = commands.Bot(command_prefix="!", intents=intents)
 
 # ⚙️ ตั้งค่า ID ยศ และลิงก์รูปภาพของคุณที่นี่
-VERIFY_ROLE_ID = 123456789012345678  # ใส่ ID ยศที่จะให้หลังยืนยัน
+VERIFY_ROLE_ID = 1537840114380709998  # ใส่ ID ยศที่จะให้หลังยืนยัน
 BANNER_IMAGE = "https://i.pinimg.com/736x/d1/50/12/d15012026d745a4302fd5bccffc437a2.jpg"
 
 class VerifyView(discord.ui.View):
