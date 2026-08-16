@@ -48,9 +48,13 @@ async def leave_hypesquad(token: str):
         async with session.delete(url, headers=get_discord_headers(token)) as resp:
             return resp.status
 
-# --- WebSocket Streaming ---
+# --- WebSocket Streaming (แก้ปัญหาเม็ดม่วงหลุดภายใน 10 นาที) ---
 
 async def start_user_streaming_task(token: str, status_text: str):
+    """
+    วนลูปการเชื่อมต่อ WebSocket แบบอ่าน Message ตลอดเวลา 
+    พร้อมส่ง Heartbeat ตามรอบและ Auto-Reconnect หากสัญญาณหลุด
+    """
     gateway_url = "wss://gateway.discord.gg/?v=9&encoding=json"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -82,12 +86,15 @@ async def start_user_streaming_task(token: str, status_text: str):
     while True:
         try:
             async with websockets.connect(gateway_url, extra_headers=headers) as ws:
+                # รับ Hello Payload เพื่อเอาเวลา Heartbeat
                 hello_raw = await ws.recv()
                 hello_data = json.loads(hello_raw)
                 heartbeat_interval = hello_data["d"]["heartbeat_interval"] / 1000
 
+                # ส่ง ยืนยันตัวตน
                 await ws.send(json.dumps(payload_auth))
 
+                # Task สำหรับส่ง Heartbeat สม่ำเสมอ
                 async def keep_alive():
                     while True:
                         await asyncio.sleep(heartbeat_interval)
@@ -96,15 +103,16 @@ async def start_user_streaming_task(token: str, status_text: str):
                 heartbeat_task = asyncio.create_task(keep_alive())
 
                 try:
+                    # คอยรับและอ่านข้อมูลจาก Discord เพื่อไม่ให้สายหลุด (Socket Overflow)
                     async for message in ws:
                         data = json.loads(message)
-                        if data.get("op") in (7, 9):
+                        if data.get("op") in (7, 9):  # Discord ขอให้ Reconnect
                             break
                 finally:
                     heartbeat_task.cancel()
 
         except asyncio.CancelledError:
-            break
+            break  # ผู้ใช้กดปิดสถานะ
         except Exception as e:
             print(f"Stream WebSocket error: {e}. Reconnecting in 5 seconds...")
             await asyncio.sleep(5)
@@ -112,27 +120,31 @@ async def start_user_streaming_task(token: str, status_text: str):
 # ----------------- Website Safety Inspector Logic -----------------
 
 async def analyze_website_safety(url_input: str):
+    """วิเคราะห์ความปลอดภัยของเว็บ โครงสร้าง SSL, IP, Redirects และโดเมนเสี่ยง"""
     if not url_input.startswith(("http://", "https://")):
         url_input = "https://" + url_input
 
     parsed = urlparse(url_input)
     domain = parsed.netloc or parsed.path.split('/')[0]
-    domain = domain.split(':')[0]
+    domain = domain.split(':')[0]  # เอาพอร์ตออกถ้ามี
 
     risk_score = 0
     warnings = []
     highlights = []
 
+    # 1. เช็กความเสี่ยงของโดเมน / คำต้องสงสัย
     suspicious_keywords = ["free-nitro", "discord-gift", "steam-promo", "free-robux", "login-verify", "claim-reward", "gift-card"]
     if any(keyword in domain.lower() for keyword in suspicious_keywords):
         risk_score += 40
         warnings.append("⚠️ โดเมนมีคำเสี่ยงสูงต่อการหลอกลวง (Phishing/Scam)")
 
+    # เช็กโดเมนย่อลิงก์
     shorteners = ["bit.ly", "tinyurl.com", "t.co", "cutt.ly", "is.gd", "v.gd"]
     if domain.lower() in shorteners:
         risk_score += 15
         warnings.append("ℹ️ เป็นบริการย่อลิงก์ อาจมีการซ่อน URL ปลายทางจริง")
 
+    # เช็กว่าใช้ IP Address แทน Domain หรือไม่
     try:
         socket.inet_aton(domain)
         risk_score += 30
@@ -140,11 +152,13 @@ async def analyze_website_safety(url_input: str):
     except socket.error:
         pass
 
+    # เช็ก TLD ทางการ (.go.th, .gov, .edu, .ac.th, .co.th)
     official_tlds = [".go.th", ".gov", ".edu", ".ac.th", ".or.th", ".co.th", ".gov.us", ".edu.au"]
     if any(domain.lower().endswith(tld) for tld in official_tlds):
         highlights.append("🏛️ เป็นโดเมนระดับองค์กร/หน่วยงานรัฐบาล/การศึกษา (ทางการ)")
         risk_score -= 30
 
+    # 2. เช็ก HTTP Response, SSL, Redirect
     status_code = None
     final_url = url_input
     is_https = url_input.startswith("https://")
@@ -169,6 +183,7 @@ async def analyze_website_safety(url_input: str):
         warnings.append(f"❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ ({type(e).__name__})")
         risk_score += 25
 
+    # 3. ดึงข้อมูล IP และสถานที่ตั้งเซิร์ฟเวอร์
     try:
         ip = socket.gethostbyname(domain)
         server_ip = ip
@@ -182,6 +197,7 @@ async def analyze_website_safety(url_input: str):
     except Exception:
         pass
 
+    # สรุปประเมินความน่าเชื่อถือ
     if risk_score <= 0:
         trust_level = "🟢 **มีความน่าเชื่อถือสูง / ปลอดภัย**"
         color = discord.Color.green()
@@ -380,6 +396,7 @@ async def on_ready():
 
 @bot.command(name="checkweb", aliases=["checkurl", "webinfo"])
 async def cmd_checkweb(ctx, url: str):
+    """คำสั่งแบบพิมพ์ !checkweb <ลิงก์เว็บ>"""
     msg = await ctx.send("⏳ กำลังตรวจสอบโครงสร้างและความปลอดภัยของเว็บไซต์...")
     embed = await analyze_website_safety(url)
     await msg.edit(content=None, embed=embed)
@@ -387,11 +404,12 @@ async def cmd_checkweb(ctx, url: str):
 @bot.tree.command(name="checkweb", description="ตรวจสอบความปลอดภัยและความน่าเชื่อถือของเว็บไซต์")
 @app_commands.describe(url="ใส่ URL หรือชื่อโดเมนเว็บไซต์ที่ต้องการเช็ก")
 async def setup_checkweb(interaction: discord.Interaction, url: str):
+    """Slash Command /checkweb <url>"""
     await interaction.response.defer()
     embed = await analyze_website_safety(url)
     await interaction.followup.send(embed=embed)
 
-# --- คำสั่งสำหรับแผงควบคุม ---
+# --- คำสั่งเดิมสำหรับแผงควบคุม ---
 
 @bot.command(name="setup_stream", aliases=["stream_panel"])
 @commands.has_permissions(administrator=True)
