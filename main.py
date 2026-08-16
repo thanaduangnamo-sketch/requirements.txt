@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from discord.ext import commands
 from discord import app_commands
 from dotenv import load_dotenv
+from aiohttp import web
 
 load_dotenv()
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
@@ -23,6 +24,21 @@ DEFAULT_STREAMING_URL = "https://www.twitch.tv/discord"
 
 active_user_streams = {}
 pending_selections = {}
+
+# ----------------- Dummy Web Server For Render Port Check -----------------
+
+async def handle_dummy_request(request):
+    return web.Response(text="Bot is running successfully on Render!")
+
+async def start_dummy_server():
+    app = web.Application()
+    app.router.add_get("/", handle_dummy_request)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", 8080))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    print(f"✅ Web server listening on port {port} (Render Health Check Passed)")
 
 # ----------------- Helper Functions -----------------
 
@@ -48,13 +64,9 @@ async def leave_hypesquad(token: str):
         async with session.delete(url, headers=get_discord_headers(token)) as resp:
             return resp.status
 
-# --- WebSocket Streaming (แก้ปัญหาเม็ดม่วงหลุดภายใน 10 นาที) ---
+# --- WebSocket Streaming ---
 
 async def start_user_streaming_task(token: str, status_text: str):
-    """
-    วนลูปการเชื่อมต่อ WebSocket แบบอ่าน Message ตลอดเวลา 
-    พร้อมส่ง Heartbeat ตามรอบและ Auto-Reconnect หากสัญญาณหลุด
-    """
     gateway_url = "wss://gateway.discord.gg/?v=9&encoding=json"
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -86,15 +98,12 @@ async def start_user_streaming_task(token: str, status_text: str):
     while True:
         try:
             async with websockets.connect(gateway_url, extra_headers=headers) as ws:
-                # รับ Hello Payload เพื่อเอาเวลา Heartbeat
                 hello_raw = await ws.recv()
                 hello_data = json.loads(hello_raw)
                 heartbeat_interval = hello_data["d"]["heartbeat_interval"] / 1000
 
-                # ส่ง ยืนยันตัวตน
                 await ws.send(json.dumps(payload_auth))
 
-                # Task สำหรับส่ง Heartbeat สม่ำเสมอ
                 async def keep_alive():
                     while True:
                         await asyncio.sleep(heartbeat_interval)
@@ -103,16 +112,15 @@ async def start_user_streaming_task(token: str, status_text: str):
                 heartbeat_task = asyncio.create_task(keep_alive())
 
                 try:
-                    # คอยรับและอ่านข้อมูลจาก Discord เพื่อไม่ให้สายหลุด (Socket Overflow)
                     async for message in ws:
                         data = json.loads(message)
-                        if data.get("op") in (7, 9):  # Discord ขอให้ Reconnect
+                        if data.get("op") in (7, 9):
                             break
                 finally:
                     heartbeat_task.cancel()
 
         except asyncio.CancelledError:
-            break  # ผู้ใช้กดปิดสถานะ
+            break
         except Exception as e:
             print(f"Stream WebSocket error: {e}. Reconnecting in 5 seconds...")
             await asyncio.sleep(5)
@@ -120,31 +128,27 @@ async def start_user_streaming_task(token: str, status_text: str):
 # ----------------- Website Safety Inspector Logic -----------------
 
 async def analyze_website_safety(url_input: str):
-    """วิเคราะห์ความปลอดภัยของเว็บ โครงสร้าง SSL, IP, Redirects และโดเมนเสี่ยง"""
     if not url_input.startswith(("http://", "https://")):
         url_input = "https://" + url_input
 
     parsed = urlparse(url_input)
     domain = parsed.netloc or parsed.path.split('/')[0]
-    domain = domain.split(':')[0]  # เอาพอร์ตออกถ้ามี
+    domain = domain.split(':')[0]
 
     risk_score = 0
     warnings = []
     highlights = []
 
-    # 1. เช็กความเสี่ยงของโดเมน / คำต้องสงสัย
     suspicious_keywords = ["free-nitro", "discord-gift", "steam-promo", "free-robux", "login-verify", "claim-reward", "gift-card"]
     if any(keyword in domain.lower() for keyword in suspicious_keywords):
         risk_score += 40
         warnings.append("⚠️ โดเมนมีคำเสี่ยงสูงต่อการหลอกลวง (Phishing/Scam)")
 
-    # เช็กโดเมนย่อลิงก์
     shorteners = ["bit.ly", "tinyurl.com", "t.co", "cutt.ly", "is.gd", "v.gd"]
     if domain.lower() in shorteners:
         risk_score += 15
         warnings.append("ℹ️ เป็นบริการย่อลิงก์ อาจมีการซ่อน URL ปลายทางจริง")
 
-    # เช็กว่าใช้ IP Address แทน Domain หรือไม่
     try:
         socket.inet_aton(domain)
         risk_score += 30
@@ -152,13 +156,11 @@ async def analyze_website_safety(url_input: str):
     except socket.error:
         pass
 
-    # เช็ก TLD ทางการ (.go.th, .gov, .edu, .ac.th, .co.th)
     official_tlds = [".go.th", ".gov", ".edu", ".ac.th", ".or.th", ".co.th", ".gov.us", ".edu.au"]
     if any(domain.lower().endswith(tld) for tld in official_tlds):
         highlights.append("🏛️ เป็นโดเมนระดับองค์กร/หน่วยงานรัฐบาล/การศึกษา (ทางการ)")
         risk_score -= 30
 
-    # 2. เช็ก HTTP Response, SSL, Redirect
     status_code = None
     final_url = url_input
     is_https = url_input.startswith("https://")
@@ -183,7 +185,6 @@ async def analyze_website_safety(url_input: str):
         warnings.append(f"❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้ ({type(e).__name__})")
         risk_score += 25
 
-    # 3. ดึงข้อมูล IP และสถานที่ตั้งเซิร์ฟเวอร์
     try:
         ip = socket.gethostbyname(domain)
         server_ip = ip
@@ -197,7 +198,6 @@ async def analyze_website_safety(url_input: str):
     except Exception:
         pass
 
-    # สรุปประเมินความน่าเชื่อถือ
     if risk_score <= 0:
         trust_level = "🟢 **มีความน่าเชื่อถือสูง / ปลอดภัย**"
         color = discord.Color.green()
@@ -279,7 +279,7 @@ class UserStreamEnableModal(discord.ui.Modal, title="🦋 เปิดใช้�
         task = asyncio.create_task(start_user_streaming_task(token, text))
         active_user_streams[user_id] = task
 
-        await interaction.followup.send(f"🟣 เปิดสถานะสตรีมมิ่งเม็ดม่วง **{text}** เรียบร้อยแล้ว! (เปิดค้างไว้ยาวๆ ไม่หลุดแล้วครับ)", ephemeral=True)
+        await interaction.followup.send(f"🟣 เปิดสถานะสตรีมมิ่งเม็ดม่วง **{text}** เรียบร้อยแล้ว!", ephemeral=True)
 
 class UserStreamDisableModal(discord.ui.Modal, title="💦 ปิดใช้งานระบบสถานะสตรีมมิ่ง"):
     async def on_submit(self, interaction: discord.Interaction):
@@ -319,7 +319,7 @@ class HypeSquadView(discord.ui.View):
         super().__init__(timeout=None)
         self.add_item(HypeSquadSelect())
 
-    @discord.ui.button(label="c HypeSquad คืออะไร? 3", style=discord.ButtonStyle.primary, custom_id="btn_hypesquad_info")
+    @discord.ui.button(label="HypeSquad คืออะไร?", style=discord.ButtonStyle.primary, custom_id="btn_hypesquad_info")
     async def btn_info(self, interaction: discord.Interaction, button: discord.ui.Button):
         info_embed = discord.Embed(
             title="🏆 HypeSquad คืออะไร?",
@@ -328,7 +328,7 @@ class HypeSquadView(discord.ui.View):
         )
         await interaction.response.send_message(embed=info_embed, ephemeral=True)
 
-    @discord.ui.button(label="c ลบตราออก 3", style=discord.ButtonStyle.danger, custom_id="btn_hypesquad_leave")
+    @discord.ui.button(label="ลบตราออก", style=discord.ButtonStyle.danger, custom_id="btn_hypesquad_leave")
     async def btn_leave(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(HypeSquadTokenModal(action="leave"))
 
@@ -381,6 +381,10 @@ def create_stream_panel_embed():
 @bot.event
 async def on_ready():
     print(f"Bot Online: {bot.user.name}")
+    
+    # เปิด Port หลอก Render เพื่อผ่าน Health Check
+    await start_dummy_server()
+
     streaming_activity = discord.Streaming(name=DEFAULT_STREAMING_NAME, url=DEFAULT_STREAMING_URL)
     await bot.change_presence(activity=streaming_activity)
 
@@ -396,7 +400,6 @@ async def on_ready():
 
 @bot.command(name="checkweb", aliases=["checkurl", "webinfo"])
 async def cmd_checkweb(ctx, url: str):
-    """คำสั่งแบบพิมพ์ !checkweb <ลิงก์เว็บ>"""
     msg = await ctx.send("⏳ กำลังตรวจสอบโครงสร้างและความปลอดภัยของเว็บไซต์...")
     embed = await analyze_website_safety(url)
     await msg.edit(content=None, embed=embed)
@@ -404,12 +407,11 @@ async def cmd_checkweb(ctx, url: str):
 @bot.tree.command(name="checkweb", description="ตรวจสอบความปลอดภัยและความน่าเชื่อถือของเว็บไซต์")
 @app_commands.describe(url="ใส่ URL หรือชื่อโดเมนเว็บไซต์ที่ต้องการเช็ก")
 async def setup_checkweb(interaction: discord.Interaction, url: str):
-    """Slash Command /checkweb <url>"""
     await interaction.response.defer()
     embed = await analyze_website_safety(url)
     await interaction.followup.send(embed=embed)
 
-# --- คำสั่งเดิมสำหรับแผงควบคุม ---
+# --- คำสั่งสำหรับแผงควบคุม ---
 
 @bot.command(name="setup_stream", aliases=["stream_panel"])
 @commands.has_permissions(administrator=True)
@@ -437,4 +439,8 @@ async def setup_hypesquad(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed, view=HypeSquadView())
     await interaction.response.send_message("✅ ส่งแผงรับตรา HypeSquad เรียบร้อยแล้ว!", ephemeral=True)
 
-bot.run(BOT_TOKEN)
+if __name__ == "__main__":
+    if BOT_TOKEN:
+        bot.run(BOT_TOKEN)
+    else:
+        print("Error: ไม่พบ DISCORD_TOKEN ใน Environment Variables")
