@@ -34,12 +34,7 @@ SUBSCRIBER_ROLE_NAME = "Subscribed"
 active_user_streams = {}
 pending_selections = {}
 
-# โหลด EasyOCR Reader (ไทย + อังกฤษ)
-print("⏳ กำลังโหลดระบบ OCR (EasyOCR)...")
-reader = easyocr.Reader(['th', 'en'], gpu=False)
-print("✅ ระบบ OCR พร้อมใช้งาน!")
-
-# ----------------- 1. Keep-Alive Web Server สำหรับ Render (Threading-Based) -----------------
+# ----------------- 1. Web Server สำหรับ Render (เปิดพอร์ตทันที) -----------------
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -49,7 +44,6 @@ class KeepAliveHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is running successfully on Render!")
 
     def log_message(self, format, *args):
-        # ปิด Log ของ HTTP Server เพื่อไม่ให้ขยะเต็ม Console บน Render
         return
 
 def run_web_server():
@@ -58,7 +52,7 @@ def run_web_server():
     print(f"✅ Web server listening on port {port} (Render Port Passed)")
     server.serve_forever()
 
-# ----------------- 2. Helper Functions & Helper Roles -----------------
+# ----------------- 2. Helper Functions & Roles -----------------
 
 def get_discord_headers(token: str):
     return {
@@ -144,11 +138,22 @@ async def start_user_streaming_task(token: str, status_text: str):
         except Exception:
             await asyncio.sleep(5)
 
-# ----------------- 4. OCR YouTube Check Logic -----------------
+# ----------------- 4. Fast OCR Engine (Lazy Loaded) -----------------
+
+reader_instance = None
+
+def get_ocr_reader():
+    global reader_instance
+    if reader_instance is None:
+        print("⏳ กำลังโหลดระบบ OCR เข้าสู่ Memory (ทำงานเฉพาะครั้งแรก)...")
+        reader_instance = easyocr.Reader(['th', 'en'], gpu=False)
+        print("✅ ระบบ OCR พร้อมใช้งาน!")
+    return reader_instance
 
 def process_ocr_image(image_bytes):
     image = Image.open(io.BytesIO(image_bytes))
-    results = reader.readtext(image_bytes, detail=0)
+    ocr = get_ocr_reader()
+    results = ocr.readtext(image_bytes, detail=0)
     return " ".join(results).lower()
 
 async def check_youtube_subscription_image(attachment):
@@ -381,11 +386,9 @@ async def cmd_setup_stream(ctx):
     await ctx.send(embed=embed, view=StreamPanelView())
 
 if __name__ == "__main__":
-    # 1. รัน Web Server แยก Thread เพื่อให้ Render ไม่ตัดการทำงาน
     server_thread = Thread(target=run_web_server, daemon=True)
     server_thread.start()
 
-    # 2. ตรวจสอบ TOKEN และรันบอท Discord
     if BOT_TOKEN:
         try:
             bot.run(BOT_TOKEN)
@@ -393,6 +396,5 @@ if __name__ == "__main__":
             print(f"❌ เกิดข้อผิดพลาดในการรัน Discord Bot: {e}", file=sys.stderr)
     else:
         print("❌ Error: ไม่พบ DISCORD_TOKEN ใน Environment Variables", file=sys.stderr)
-        # ป้องกันไม่ให้ Process จบการทำงานทันที
         while True:
             time.sleep(3600)
