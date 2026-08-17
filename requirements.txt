@@ -2,3 +2,7 @@ discord.py
 python-dotenv
 aiohttp
 websockets
+easyocr
+Pillow
+torch
+torchvision
