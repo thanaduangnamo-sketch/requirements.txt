@@ -26,15 +26,16 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ----------------- Configuration & Constants -----------------
 BANNER_IMAGE_URL = "https://media.discordapp.net/attachments/1373550875435470869/1415999280262676492/e5b3508e-ccc8-43f9-a693-276517c1cc47.gif?ex=6a8231d8&is=6a80e058&hm=af48d1b3a893fabeebb73ffaa3215e130fd10ac2c4f4a2fc500d2e9f05f903fd&=&width=384&height=216"
 DEFAULT_STREAMING_NAME = "ระบบรับตรา HypeSquad 🏆"
 DEFAULT_STREAMING_URL = "https://www.twitch.tv/discord"
-SUBSCRIBER_ROLE_NAME = "Subscribed"
+SUBSCRIBER_ROLE_ID = 1538343420538519602  # ID ยศผู้ติดตาม YouTube
 
 active_user_streams = {}
 pending_selections = {}
 
-# ----------------- 1. Web Server สำหรับ Render (เปิดพอร์ตทันที) -----------------
+# ----------------- 1. Web Server สำหรับ Render (Keep-Alive) -----------------
 
 class KeepAliveHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -52,7 +53,7 @@ def run_web_server():
     print(f"✅ Web server listening on port {port} (Render Port Passed)")
     server.serve_forever()
 
-# ----------------- 2. Helper Functions & Roles -----------------
+# ----------------- 2. Helper Functions & Role Management -----------------
 
 def get_discord_headers(token: str):
     return {
@@ -61,20 +62,28 @@ def get_discord_headers(token: str):
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 
-async def assign_or_create_role(guild: discord.Guild, member: discord.Member, role_name: str):
-    role = discord.utils.get(guild.roles, name=role_name)
+async def assign_or_create_role(guild: discord.Guild, member: discord.Member, role_identifier):
+    role = None
     created_new = False
 
+    # ตรวจสอบว่าเป็น Role ID (int) หรือ ชื่อยศ (str)
+    if isinstance(role_identifier, int):
+        role = guild.get_role(role_identifier)
+    else:
+        role = discord.utils.get(guild.roles, name=str(role_identifier))
+        if not role:
+            try:
+                role = await guild.create_role(
+                    name=str(role_identifier),
+                    color=discord.Color.blue(),
+                    reason="สร้างยศให้อัตโนมัติ"
+                )
+                created_new = True
+            except discord.Forbidden:
+                return False, "❌ บอทไม่มีสิทธิ์สร้างยศ (กรุณาเช็ก Bot Permissions)", False
+
     if not role:
-        try:
-            role = await guild.create_role(
-                name=role_name,
-                color=discord.Color.blue(),
-                reason="สร้างยศให้อัตโนมัติ"
-            )
-            created_new = True
-        except discord.Forbidden:
-            return False, "❌ บอทไม่มีสิทธิ์สร้างยศ (กรุณาเช็ก Bot Permissions)", False
+        return False, "❌ ไม่พบยศนี้ในเซิร์ฟเวอร์ (กรุณาตรวจสอบ ID หรือชื่อยศอีกครั้ง)", False
 
     try:
         await member.add_roles(role)
@@ -138,14 +147,14 @@ async def start_user_streaming_task(token: str, status_text: str):
         except Exception:
             await asyncio.sleep(5)
 
-# ----------------- 4. Fast OCR Engine (Lazy Loaded) -----------------
+# ----------------- 4. Fast OCR Engine (Lazy Loading) -----------------
 
 reader_instance = None
 
 def get_ocr_reader():
     global reader_instance
     if reader_instance is None:
-        print("⏳ กำลังโหลดระบบ OCR เข้าสู่ Memory (ทำงานเฉพาะครั้งแรก)...")
+        print("⏳ กำลังโหลดระบบ OCR เข้าสู่ Memory (ครั้งแรกเท่านั้น)...")
         reader_instance = easyocr.Reader(['th', 'en'], gpu=False)
         print("✅ ระบบ OCR พร้อมใช้งาน!")
     return reader_instance
@@ -350,7 +359,7 @@ async def on_message(message: discord.Message):
                     except Exception:
                         pass
                     
-                    role_success, role_msg, created_new = await assign_or_create_role(message.guild, message.author, SUBSCRIBER_ROLE_NAME)
+                    role_success, role_msg, created_new = await assign_or_create_role(message.guild, message.author, SUBSCRIBER_ROLE_ID)
                     embed = discord.Embed(title="✅ ยืนยันการติดตามสำเร็จ!", description=f"{result_text}\n\n{role_msg}", color=discord.Color.green())
                     await status_msg.edit(content=None, embed=embed)
                 else:
@@ -364,7 +373,7 @@ async def on_message(message: discord.Message):
 
     await bot.process_commands(message)
 
-# Commands สำหรับเรียกแผงเมนูต่าง ๆ
+# Commands สำหรับ Admin เรียกแผงเมนู
 @bot.command(name="setup_region")
 @commands.has_permissions(administrator=True)
 async def cmd_setup_region(ctx):
