@@ -1,8 +1,9 @@
+--find-links https://download.pytorch.org/whl/cpu
+torch
+torchvision
 discord.py
 python-dotenv
 aiohttp
 websockets
 easyocr
 Pillow
-torch
-torchvision
