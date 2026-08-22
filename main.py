@@ -4,28 +4,23 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from flask import Flask
-from threading import Thread
+import threading
 
 # ==================================================
 # 🌐 WEB SERVER FOR RENDER (KEEP-ALIVE)
 # ==================================================
-app = Flask('')
+app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Bot status: ONLINE 24/7"
 
-def run_web_server():
+def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-def keep_alive():
-    t = Thread(target=run_web_server)
-    t.daemon = True
-    t.start()
-
 # ==================================================
-# ⚙️ BOT SETUP & INTENTS
+# ⚙️ BOT INITIALIZATION & INTENTS
 # ==================================================
 intents = discord.Intents.default()
 intents.message_content = True
@@ -35,9 +30,6 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# ==================================================
-# 🤖 BOT EVENTS & PURPLE STATUS
-# ==================================================
 @bot.event
 async def on_ready():
     try:
@@ -46,7 +38,7 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Sync failed: {e}")
 
-    # ตั้งค่าสถานะออนไลน์เป็นสีม่วง (Streaming)
+    # สถานะออนไลน์สีม่วง (Streaming)
     purple_status = discord.Streaming(
         name="ออนไลน์ 24 ชม. 💜", 
         url="https://www.twitch.tv/discord"
@@ -55,20 +47,27 @@ async def on_ready():
     print(f"⚡ BOT IS NOW ONLINE: {bot.user}")
 
 # ==================================================
-# 🚀 BOT RUNNER
+# 🚀 MAIN ENTRY POINT
 # ==================================================
+async def main():
+    # 1. เริ่มรัน Web Server แยก Thread
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # 2. ดึง Token
+    token = os.getenv("DISCORD_TOKEN")
+    if not token:
+        print("❌ CRITICAL ERROR: Key 'DISCORD_TOKEN' is missing in Environment Variables!")
+        return
+
+    # 3. รันบอท
+    try:
+        await bot.start(token.strip())
+    except discord.errors.LoginFailure:
+        print("❌ CRITICAL ERROR: Invalid Discord Token!")
+    except Exception as e:
+        print(f"❌ CRITICAL ERROR: {e}")
+
 if __name__ == "__main__":
-    keep_alive()
-    
-    # ดึง Token จาก Environment Variables ของ Render
-    TOKEN = os.getenv("DISCORD_TOKEN")
-    
-    if not TOKEN:
-        print("❌ ERROR: Key 'DISCORD_TOKEN' not found in Render Environment!")
-    else:
-        try:
-            bot.run(TOKEN.strip())
-        except discord.errors.LoginFailure:
-            print("❌ ERROR: Invalid Discord Token! Check your token in Render Environment.")
-        except Exception as e:
-            print(f"❌ ERROR: {e}")
+    asyncio.run(main())
