@@ -1,1 +1,1 @@
-# requirements.txt
+Merhabalar dostlar bu altyapı şuan maalesef çalışmıyor. İlk başta bu projeyi zevkine yapmıştım bu yüzden fazla kaliteli yapmadım biraz kötü bir altyapı oldu. Madem beğenildi dedim daha iyisini yapmaya karar verdim. Şuan üzerinde çalışıyorum yakın zamanda yeni çalışan halini paylaşırım. ♥️
